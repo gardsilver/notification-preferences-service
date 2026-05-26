@@ -1,0 +1,26 @@
+import { Injectable } from '@nestjs/common';
+import { IKeyValue } from 'src/modules/common';
+import { BaseErrorObjectFormatter } from 'src/modules/elk-logger';
+import { HttHeadersHelper } from 'src/modules/http/http-common';
+import { HttpClientError } from '../../errors/http-client.error';
+
+@Injectable()
+export class HttpClientErrorFormatter extends BaseErrorObjectFormatter<HttpClientError> {
+  isInstanceOf(obj: unknown): obj is HttpClientError {
+    return obj instanceof HttpClientError;
+  }
+
+  transform(from: HttpClientError): IKeyValue<unknown> {
+    return {
+      statusCode: from.statusCode,
+      response: from.response
+        ? {
+            status: from.response.status,
+            statusText: from.response.statusText,
+            data: from.response.data,
+            headers: from.response.headers ? HttHeadersHelper.normalize(from.response.headers) : undefined,
+          }
+        : undefined,
+    };
+  }
+}

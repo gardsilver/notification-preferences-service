@@ -1,0 +1,1699 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { faker } from '@faker-js/faker';
+import { GeneralAsyncContext, IGeneralAsyncContext } from 'src/modules/common';
+import { TraceSpanBuilder } from 'src/modules/elk-logger';
+import { DateTimestamp } from 'src/modules/date-timestamp';
+import { METRIC_COUNTER, METRIC_GAUGE, METRIC_HISTOGRAM, METRIC_SUMMARY } from 'tests/modules/prometheus';
+import { PrometheusDecoratorHelper } from '../helpers/prometheus.decorator.helper';
+import { PrometheusOnMethod } from './prometheus.on-method';
+import { PrometheusEventConfigDecoratorHelper } from '../helpers/prometheus.event-config.decorator.helper';
+import { PrometheusEventService } from '../services/prometheus.event-service';
+import { PrometheusLabels } from '../types/types';
+import { IPrometheusEventConfig, IPrometheusOnMethod, ITargetPrometheusOnMethod } from '../types/decorators.type';
+import { PrometheusMetricConfigOnService } from './prometheus.metric-config.on-service';
+
+import { CRYPTO_MOCK } from 'tests/crypto';
+
+jest.mock('crypto', () => ({ ...jest.requireActual('crypto'), ...jest.requireActual('tests/crypto').CRYPTO_MOCK }));
+
+let mockUuid: string;
+
+const eventConfigBuilder = (): IPrometheusEventConfig => {
+  return {
+    counter: {
+      increment: {
+        metricConfig: {
+          name: faker.string.alpha(5),
+          help: faker.string.alpha(5),
+          labelNames: ['method'],
+        },
+        params: {
+          labels: {
+            method: faker.string.alpha(5),
+          },
+          value: faker.number.int(10),
+        },
+      },
+    },
+    gauge: {
+      increment: {
+        metricConfig: {
+          name: faker.string.alpha(5),
+          help: faker.string.alpha(5),
+          labelNames: ['method'],
+        },
+        params: {
+          labels: {
+            method: faker.string.alpha(5),
+          },
+          value: faker.number.int(10),
+        },
+      },
+      decrement: {
+        metricConfig: {
+          name: faker.string.alpha(5),
+          help: faker.string.alpha(5),
+          labelNames: ['method'],
+        },
+        params: {
+          labels: {
+            method: faker.string.alpha(5),
+          },
+          value: faker.number.int(10),
+        },
+      },
+    },
+    histogram: {
+      observe: {
+        metricConfig: {
+          name: faker.string.alpha(5),
+          help: faker.string.alpha(5),
+          labelNames: ['method'],
+        },
+        params: {
+          labels: {
+            method: faker.string.alpha(5),
+          },
+          value: faker.number.int(10),
+        },
+      },
+      startTimer: {
+        metricConfig: {
+          name: faker.string.alpha(5),
+          help: faker.string.alpha(5),
+          labelNames: ['method'],
+        },
+        params: {
+          labels: {
+            method: faker.string.alpha(5),
+          },
+          value: faker.number.int(10),
+        },
+      },
+      end: {
+        labels: {
+          status: faker.string.alpha(5),
+        },
+      },
+    },
+    summary: {
+      observe: {
+        metricConfig: {
+          name: faker.string.alpha(5),
+          help: faker.string.alpha(5),
+          labelNames: ['method'],
+        },
+        params: {
+          labels: {
+            method: faker.string.alpha(5),
+          },
+          value: faker.number.int(10),
+        },
+      },
+      startTimer: {
+        metricConfig: {
+          name: faker.string.alpha(5),
+          help: faker.string.alpha(5),
+          labelNames: ['method'],
+        },
+        params: {
+          labels: {
+            method: faker.string.alpha(5),
+          },
+          value: faker.number.int(10),
+        },
+      },
+      end: {
+        labels: {
+          status: faker.string.alpha(5),
+        },
+      },
+    },
+    custom: jest.fn(),
+  };
+};
+
+const useEventConfig: IPrometheusOnMethod = {
+  labels: {
+    method: faker.string.alpha(8),
+  },
+  before: eventConfigBuilder(),
+  after: eventConfigBuilder(),
+  throw: eventConfigBuilder(),
+  finally: eventConfigBuilder(),
+};
+
+describe('PrometheusOnMethod', () => {
+  let spyBuildLabels: jest.Mock;
+  let spyBuildEventConfig: jest.Mock;
+  let spyEmit: jest.Mock;
+
+  let context: IGeneralAsyncContext;
+
+  let defaultLabels: PrometheusLabels;
+  let eventConfig: IPrometheusEventConfig;
+
+  let mockError: Error;
+
+  beforeEach(async () => {
+    spyBuildLabels = jest.fn().mockImplementation(() => defaultLabels);
+    spyBuildEventConfig = jest.fn().mockImplementation(() => eventConfig);
+    spyEmit = jest.fn();
+
+    PrometheusDecoratorHelper.buildLabels = spyBuildLabels;
+    PrometheusEventConfigDecoratorHelper.build = spyBuildEventConfig;
+    PrometheusEventService.emit = spyEmit;
+
+    mockUuid = faker.string.uuid();
+    CRYPTO_MOCK.randomUUID.mockImplementation(() => mockUuid);
+
+    context = {
+      ...TraceSpanBuilder.build(),
+    };
+
+    defaultLabels = {
+      service: faker.string.alpha(5),
+    };
+
+    eventConfig = eventConfigBuilder();
+
+    mockError = new Error('Test error');
+
+    jest.spyOn(GeneralAsyncContext.instance, 'extend').mockImplementation(() => context);
+    jest.spyOn(DateTimestamp.prototype, 'diff').mockImplementation(() => 20_000);
+
+    jest.clearAllMocks();
+  });
+
+  describe('no async', () => {
+    describe('default', () => {
+      class TestService {
+        @PrometheusOnMethod({})
+        runOk(status: string) {
+          return status;
+        }
+
+        @PrometheusOnMethod({})
+        runError(status: string) {
+          throw mockError;
+        }
+      }
+
+      let service: TestService;
+      let params: ITargetPrometheusOnMethod;
+
+      beforeEach(async () => {
+        service = new TestService();
+
+        params = {
+          service: 'TestService',
+          method: 'runOk',
+          context,
+          clear: false,
+          prometheusEventConfig: false,
+        };
+      });
+
+      it('success', async () => {
+        let result = undefined;
+
+        result = service.runOk('success');
+
+        expect(result).toBe('success');
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(undefined, false);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+        );
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+          {
+            histogram: {
+              value: 20,
+              end: true,
+            },
+            summary: {
+              value: 20,
+              end: true,
+            },
+          },
+        );
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // after
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+        );
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            result,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+
+      it('failed', async () => {
+        let result = undefined;
+
+        params.method = 'runError';
+        try {
+          result = service.runError('success');
+        } catch (err) {
+          result = err;
+        }
+
+        expect(result).toEqual(mockError);
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(undefined, false);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+        );
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // throw
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+        );
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            error: mockError,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+          {
+            histogram: {
+              value: 20,
+              end: true,
+            },
+            summary: {
+              value: 20,
+              end: true,
+            },
+          },
+        );
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+    });
+
+    describe('custom config', () => {
+      const defaultOption = {
+        labels: {
+          service: 'UserService',
+        },
+        counter: METRIC_COUNTER,
+        gauge: METRIC_GAUGE,
+        histogram: METRIC_HISTOGRAM,
+        summary: METRIC_SUMMARY,
+      };
+
+      @PrometheusMetricConfigOnService(defaultOption)
+      class TestService {
+        @PrometheusOnMethod({
+          ...useEventConfig,
+        })
+        runOk(status: string) {
+          return status;
+        }
+
+        @PrometheusOnMethod({
+          ...useEventConfig,
+        })
+        runError(status: string) {
+          throw mockError;
+        }
+      }
+
+      let service: TestService;
+      let params: ITargetPrometheusOnMethod;
+
+      beforeEach(async () => {
+        params = {
+          service: 'TestService',
+          method: 'runOk',
+          context,
+          clear: false,
+          prometheusEventConfig: false,
+        };
+
+        service = new TestService();
+      });
+
+      it('success', async () => {
+        let result = undefined;
+
+        result = service.runOk('success');
+
+        expect(result).toBe('success');
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(useEventConfig.labels, defaultOption.labels);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.before, defaultOption, defaultLabels);
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.finally, defaultOption, defaultLabels, {
+          histogram: {
+            value: 20,
+            end: true,
+          },
+          summary: {
+            value: 20,
+            end: true,
+          },
+        });
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // after
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.after, defaultOption, defaultLabels);
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            result,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+
+      it('failed', async () => {
+        let result = undefined;
+
+        params.method = 'runError';
+        try {
+          result = service.runError('success');
+        } catch (err) {
+          result = err;
+        }
+
+        expect(result).toEqual(mockError);
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(useEventConfig.labels, defaultOption.labels);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.before, defaultOption, defaultLabels);
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // throw
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.throw, defaultOption, defaultLabels);
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            error: mockError,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.finally, defaultOption, defaultLabels, {
+          histogram: {
+            value: 20,
+            end: true,
+          },
+          summary: {
+            value: 20,
+            end: true,
+          },
+        });
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+    });
+
+    describe('custom function', () => {
+      const defaultOption = {
+        labels: {
+          service: 'UserService',
+        },
+        counter: METRIC_COUNTER,
+        gauge: METRIC_GAUGE,
+        histogram: METRIC_HISTOGRAM,
+        summary: METRIC_SUMMARY,
+      };
+
+      const spyLabel = jest.fn().mockImplementation(() => useEventConfig.labels);
+      const spyBefore = jest.fn().mockImplementation(() => useEventConfig.before);
+      const spyAfter = jest.fn().mockImplementation(() => useEventConfig.after);
+      const spyThrow = jest.fn().mockImplementation(() => useEventConfig.throw);
+      const spyFinally = jest.fn().mockImplementation(() => useEventConfig.finally);
+
+      @PrometheusMetricConfigOnService(defaultOption)
+      class TestService {
+        @PrometheusOnMethod({
+          labels: spyLabel,
+          before: spyBefore,
+          after: spyAfter,
+          throw: spyThrow,
+          finally: spyFinally,
+        })
+        runOk(status: string) {
+          return status;
+        }
+
+        @PrometheusOnMethod({
+          labels: spyLabel,
+          before: spyBefore,
+          after: spyAfter,
+          throw: spyThrow,
+          finally: spyFinally,
+        })
+        runError(status: string) {
+          throw mockError;
+        }
+      }
+
+      let service: TestService;
+      let params: ITargetPrometheusOnMethod;
+
+      beforeEach(async () => {
+        params = {
+          service: 'TestService',
+          method: 'runOk',
+          context,
+          clear: false,
+          prometheusEventConfig: false,
+        };
+
+        service = new TestService();
+      });
+
+      it('success', async () => {
+        let result = undefined;
+
+        result = service.runOk('success');
+
+        expect(result).toBe('success');
+
+        expect(spyLabel).toHaveBeenCalledTimes(1);
+        expect(spyLabel).toHaveBeenCalledWith({
+          labels: defaultOption.labels,
+          methodsArgs: ['success'],
+        });
+        expect(spyBefore).toHaveBeenCalledTimes(1);
+        expect(spyBefore).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+        });
+        expect(spyAfter).toHaveBeenCalledTimes(1);
+        expect(spyAfter).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+          duration: 20,
+          result,
+        });
+        expect(spyThrow).toHaveBeenCalledTimes(0);
+        expect(spyFinally).toHaveBeenCalledTimes(1);
+        expect(spyFinally).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+          duration: 20,
+        });
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(useEventConfig.labels, defaultOption.labels);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.before, defaultOption, defaultLabels);
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.finally, defaultOption, defaultLabels, {
+          histogram: {
+            value: 20,
+            end: true,
+          },
+          summary: {
+            value: 20,
+            end: true,
+          },
+        });
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // after
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.after, defaultOption, defaultLabels);
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            result,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+
+      it('failed', async () => {
+        let result = undefined;
+
+        params.method = 'runError';
+        try {
+          result = service.runError('success');
+        } catch (err) {
+          result = err;
+        }
+
+        expect(result).toEqual(mockError);
+
+        expect(spyLabel).toHaveBeenCalledTimes(1);
+        expect(spyLabel).toHaveBeenCalledWith({
+          labels: defaultOption.labels,
+          methodsArgs: ['success'],
+        });
+        expect(spyBefore).toHaveBeenCalledTimes(1);
+        expect(spyBefore).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+        });
+        expect(spyAfter).toHaveBeenCalledTimes(0);
+        expect(spyThrow).toHaveBeenCalledTimes(1);
+        expect(spyThrow).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+          duration: 20,
+          error: mockError,
+        });
+        expect(spyFinally).toHaveBeenCalledTimes(1);
+        expect(spyFinally).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+          duration: 20,
+        });
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(useEventConfig.labels, defaultOption.labels);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.before, defaultOption, defaultLabels);
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // throw
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.throw, defaultOption, defaultLabels);
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            error: mockError,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.finally, defaultOption, defaultLabels, {
+          histogram: {
+            value: 20,
+            end: true,
+          },
+          summary: {
+            value: 20,
+            end: true,
+          },
+        });
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+    });
+  });
+
+  describe('async', () => {
+    describe('default', () => {
+      class TestService {
+        @PrometheusOnMethod({})
+        async runOk(status: string) {
+          return status;
+        }
+
+        @PrometheusOnMethod({})
+        async runError(status: string) {
+          throw mockError;
+        }
+      }
+
+      let service: TestService;
+      let params: ITargetPrometheusOnMethod;
+
+      beforeEach(async () => {
+        service = new TestService();
+
+        params = {
+          service: 'TestService',
+          method: 'runOk',
+          context,
+          clear: false,
+          prometheusEventConfig: false,
+        };
+      });
+
+      it('success', async () => {
+        let result = undefined;
+
+        result = await service.runOk('success');
+
+        expect(result).toBe('success');
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(undefined, false);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+        );
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+          {
+            histogram: {
+              value: 20,
+              end: true,
+            },
+            summary: {
+              value: 20,
+              end: true,
+            },
+          },
+        );
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // after
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+        );
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            result,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+
+      it('failed', async () => {
+        let result = undefined;
+
+        params.method = 'runError';
+        try {
+          result = await service.runError('success');
+        } catch (err) {
+          result = err;
+        }
+
+        expect(result).toEqual(mockError);
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(undefined, false);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+        );
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // throw
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+        );
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            error: mockError,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(
+          false,
+          {
+            labels: false,
+            counter: false,
+            gauge: false,
+            histogram: false,
+            summary: false,
+          },
+          defaultLabels,
+          {
+            histogram: {
+              value: 20,
+              end: true,
+            },
+            summary: {
+              value: 20,
+              end: true,
+            },
+          },
+        );
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+    });
+
+    describe('custom config', () => {
+      const defaultOption = {
+        labels: {
+          service: 'UserService',
+        },
+        counter: METRIC_COUNTER,
+        gauge: METRIC_GAUGE,
+        histogram: METRIC_HISTOGRAM,
+        summary: METRIC_SUMMARY,
+      };
+
+      @PrometheusMetricConfigOnService(defaultOption)
+      class TestService {
+        @PrometheusOnMethod({
+          ...useEventConfig,
+        })
+        async runOk(status: string) {
+          return status;
+        }
+
+        @PrometheusOnMethod({
+          ...useEventConfig,
+        })
+        async runError(status: string) {
+          throw mockError;
+        }
+      }
+
+      let service: TestService;
+      let params: ITargetPrometheusOnMethod;
+
+      beforeEach(async () => {
+        params = {
+          service: 'TestService',
+          method: 'runOk',
+          context,
+          clear: false,
+          prometheusEventConfig: false,
+        };
+
+        service = new TestService();
+      });
+
+      it('success', async () => {
+        let result = undefined;
+
+        result = await service.runOk('success');
+
+        expect(result).toBe('success');
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(useEventConfig.labels, defaultOption.labels);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.before, defaultOption, defaultLabels);
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.finally, defaultOption, defaultLabels, {
+          histogram: {
+            value: 20,
+            end: true,
+          },
+          summary: {
+            value: 20,
+            end: true,
+          },
+        });
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // after
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.after, defaultOption, defaultLabels);
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            result,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+
+      it('failed', async () => {
+        let result = undefined;
+
+        params.method = 'runError';
+        try {
+          result = await service.runError('success');
+        } catch (err) {
+          result = err;
+        }
+
+        expect(result).toEqual(mockError);
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(useEventConfig.labels, defaultOption.labels);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.before, defaultOption, defaultLabels);
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // throw
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.throw, defaultOption, defaultLabels);
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            error: mockError,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.finally, defaultOption, defaultLabels, {
+          histogram: {
+            value: 20,
+            end: true,
+          },
+          summary: {
+            value: 20,
+            end: true,
+          },
+        });
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+    });
+
+    describe('custom function', () => {
+      const defaultOption = {
+        labels: {
+          service: 'UserService',
+        },
+        counter: METRIC_COUNTER,
+        gauge: METRIC_GAUGE,
+        histogram: METRIC_HISTOGRAM,
+        summary: METRIC_SUMMARY,
+      };
+
+      const spyLabel = jest.fn().mockImplementation(() => useEventConfig.labels);
+      const spyBefore = jest.fn().mockImplementation(() => useEventConfig.before);
+      const spyAfter = jest.fn().mockImplementation(() => useEventConfig.after);
+      const spyThrow = jest.fn().mockImplementation(() => useEventConfig.throw);
+      const spyFinally = jest.fn().mockImplementation(() => useEventConfig.finally);
+
+      @PrometheusMetricConfigOnService(defaultOption)
+      class TestService {
+        @PrometheusOnMethod({
+          labels: spyLabel,
+          before: spyBefore,
+          after: spyAfter,
+          throw: spyThrow,
+          finally: spyFinally,
+        })
+        async runOk(status: string) {
+          return status;
+        }
+
+        @PrometheusOnMethod({
+          labels: spyLabel,
+          before: spyBefore,
+          after: spyAfter,
+          throw: spyThrow,
+          finally: spyFinally,
+        })
+        async runError(status: string) {
+          throw mockError;
+        }
+      }
+
+      let service: TestService;
+      let params: ITargetPrometheusOnMethod;
+
+      beforeEach(async () => {
+        params = {
+          service: 'TestService',
+          method: 'runOk',
+          context,
+          clear: false,
+          prometheusEventConfig: false,
+        };
+
+        service = new TestService();
+      });
+
+      it('success', async () => {
+        let result = undefined;
+
+        result = await service.runOk('success');
+
+        expect(result).toBe('success');
+
+        expect(spyLabel).toHaveBeenCalledTimes(1);
+        expect(spyLabel).toHaveBeenCalledWith({
+          labels: defaultOption.labels,
+          methodsArgs: ['success'],
+        });
+        expect(spyBefore).toHaveBeenCalledTimes(1);
+        expect(spyBefore).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+        });
+        expect(spyAfter).toHaveBeenCalledTimes(1);
+        expect(spyAfter).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+          duration: 20,
+          result,
+        });
+        expect(spyThrow).toHaveBeenCalledTimes(0);
+        expect(spyFinally).toHaveBeenCalledTimes(1);
+        expect(spyFinally).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+          duration: 20,
+        });
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(useEventConfig.labels, defaultOption.labels);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.before, defaultOption, defaultLabels);
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.finally, defaultOption, defaultLabels, {
+          histogram: {
+            value: 20,
+            end: true,
+          },
+          summary: {
+            value: 20,
+            end: true,
+          },
+        });
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // after
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.after, defaultOption, defaultLabels);
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            result,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+
+      it('failed', async () => {
+        let result = undefined;
+
+        params.method = 'runError';
+        try {
+          result = await service.runError('success');
+        } catch (err) {
+          result = err;
+        }
+
+        expect(result).toEqual(mockError);
+
+        expect(spyLabel).toHaveBeenCalledTimes(1);
+        expect(spyLabel).toHaveBeenCalledWith({
+          labels: defaultOption.labels,
+          methodsArgs: ['success'],
+        });
+        expect(spyBefore).toHaveBeenCalledTimes(1);
+        expect(spyBefore).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+        });
+        expect(spyAfter).toHaveBeenCalledTimes(0);
+        expect(spyThrow).toHaveBeenCalledTimes(1);
+        expect(spyThrow).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+          duration: 20,
+          error: mockError,
+        });
+        expect(spyFinally).toHaveBeenCalledTimes(1);
+        expect(spyFinally).toHaveBeenCalledWith({
+          labels: defaultLabels,
+          methodsArgs: ['success'],
+          duration: 20,
+        });
+
+        expect(spyBuildLabels).toHaveBeenCalledTimes(1);
+        expect(spyBuildLabels).toHaveBeenCalledWith(useEventConfig.labels, defaultOption.labels);
+
+        expect(spyBuildEventConfig).toHaveBeenCalledTimes(3);
+        expect(spyEmit).toHaveBeenCalledTimes(3);
+
+        // before
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.before, defaultOption, defaultLabels);
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // throw
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.throw, defaultOption, defaultLabels);
+
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            error: mockError,
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+
+        // finally
+        expect(spyBuildEventConfig).toHaveBeenCalledWith(useEventConfig.finally, defaultOption, defaultLabels, {
+          histogram: {
+            value: 20,
+            end: true,
+          },
+          summary: {
+            value: 20,
+            end: true,
+          },
+        });
+        expect(spyEmit).toHaveBeenCalledWith(
+          mockUuid,
+          {
+            duration: 20,
+            labels: defaultLabels,
+            methodsArgs: ['success'],
+          },
+          {
+            ...params,
+            clear: true,
+            prometheusEventConfig: eventConfig,
+          },
+        );
+      });
+    });
+  });
+
+  describe('function configs', () => {
+    it('invokes labels/before/after/throw/finally as functions and handles false labels', async () => {
+      spyBuildLabels.mockImplementation(() => undefined);
+
+      const labelsFn = jest.fn(() => ({ k: 'v' }));
+      const beforeFn = jest.fn(() => eventConfig);
+      const afterFn = jest.fn(() => eventConfig);
+      const throwFn = jest.fn(() => eventConfig);
+      const finallyFn = jest.fn(() => eventConfig);
+
+      class SyncOk {
+        @PrometheusOnMethod({
+          labels: labelsFn,
+          before: beforeFn,
+          after: afterFn,
+          throw: throwFn,
+          finally: finallyFn,
+        })
+        run(input: string) {
+          return input;
+        }
+      }
+
+      class SyncFail {
+        @PrometheusOnMethod({
+          labels: labelsFn,
+          before: beforeFn,
+          after: afterFn,
+          throw: throwFn,
+          finally: finallyFn,
+        })
+        run(_input: string) {
+          throw mockError;
+        }
+      }
+
+      const ok = new SyncOk();
+      expect(ok.run('hi')).toBe('hi');
+      expect(labelsFn).toHaveBeenCalled();
+      expect(beforeFn).toHaveBeenCalled();
+      expect(afterFn).toHaveBeenCalled();
+      expect(finallyFn).toHaveBeenCalled();
+
+      const fail = new SyncFail();
+      expect(() => fail.run('hi')).toThrow(mockError);
+      expect(throwFn).toHaveBeenCalled();
+    });
+
+    it('async promise resolves and rejects emit events', async () => {
+      class AsyncOk {
+        @PrometheusOnMethod({})
+        async run(v: string) {
+          return v;
+        }
+      }
+      class AsyncFail {
+        @PrometheusOnMethod({})
+        async run(_v: string) {
+          throw mockError;
+        }
+      }
+
+      await expect(new AsyncOk().run('x')).resolves.toBe('x');
+      await expect(new AsyncFail().run('x')).rejects.toBe(mockError);
+    });
+
+    it('beforeCall with histogram/summary startTimer triggers endConfig', async () => {
+      const cfgWithTimer: IPrometheusEventConfig = {
+        histogram: {
+          startTimer: {
+            metricConfig: { name: 'h', help: 'h', labelNames: [] },
+            params: { value: 1 },
+          },
+        },
+        summary: {
+          startTimer: {
+            metricConfig: { name: 's', help: 's', labelNames: [] },
+            params: { value: 1 },
+          },
+        },
+      };
+
+      spyBuildEventConfig.mockImplementation(() => cfgWithTimer);
+
+      class TimedSync {
+        @PrometheusOnMethod({ before: cfgWithTimer, finally: cfgWithTimer })
+        run(v: string) {
+          return v;
+        }
+      }
+
+      expect(new TimedSync().run('ok')).toBe('ok');
+      expect(spyBuildEventConfig).toHaveBeenCalled();
+    });
+
+    it('async method with histogram/summary timer in beforeCall triggers endConfig in finally', async () => {
+      const cfgWithTimer: IPrometheusEventConfig = {
+        histogram: {
+          startTimer: {
+            metricConfig: { name: 'h', help: 'h', labelNames: [] },
+            params: { value: 1 },
+          },
+        },
+        summary: {
+          startTimer: {
+            metricConfig: { name: 's', help: 's', labelNames: [] },
+            params: { value: 1 },
+          },
+        },
+      };
+
+      spyBuildEventConfig.mockImplementation(() => cfgWithTimer);
+
+      class TimedAsync {
+        @PrometheusOnMethod({ before: cfgWithTimer, finally: cfgWithTimer, after: cfgWithTimer })
+        async run(v: string) {
+          return v;
+        }
+      }
+
+      await expect(new TimedAsync().run('ok')).resolves.toBe('ok');
+    });
+
+    it('async method with histogram/summary timer in beforeCall also exercises throw', async () => {
+      const cfgWithTimer: IPrometheusEventConfig = {
+        histogram: {
+          startTimer: {
+            metricConfig: { name: 'h', help: 'h', labelNames: [] },
+            params: { value: 1 },
+          },
+        },
+        summary: {
+          startTimer: {
+            metricConfig: { name: 's', help: 's', labelNames: [] },
+            params: { value: 1 },
+          },
+        },
+      };
+
+      spyBuildEventConfig.mockImplementation(() => cfgWithTimer);
+
+      class TimedAsyncFail {
+        @PrometheusOnMethod({ before: cfgWithTimer, finally: cfgWithTimer, throw: cfgWithTimer })
+        async run(_v: string) {
+          throw mockError;
+        }
+      }
+
+      await expect(new TimedAsyncFail().run('ok')).rejects.toBe(mockError);
+    });
+  });
+});

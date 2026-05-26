@@ -1,0 +1,165 @@
+import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
+import { CheckObjectsType } from 'src/modules/common/utils';
+import { MockEncodeFormatter, MockFormatter } from 'tests/modules/elk-logger';
+import { MockConfigService } from 'tests/nestjs';
+import {
+  ELK_DEFAULT_FIELDS_DI,
+  ELK_FEATURE_ENCODERS_DI,
+  ELK_FEATURE_FORMATTERS_DI,
+  ELK_IGNORE_FORMATTER_OBJECTS_DI,
+  ELK_OBJECT_FORMATTERS_DI,
+  ELK_SORT_FIELDS_DI,
+} from '../types/tokens';
+import { ILogFields } from '../types/elk-logger.types';
+import { RecordEncodeFormattersFactory } from '../formatters/record-encode.formatters.factory';
+import { FullFormatter } from '../formatters/record-encodes/full.formatter';
+import { SimpleFormatter } from '../formatters/record-encodes/simple.formatter';
+import { ShortFormatter } from '../formatters/record-encodes/short.formatter';
+import { FormattersFactory } from '../formatters/formatters.factory';
+import { GeneralAsyncContextFormatter } from '../formatters/records/general.async-context.formatter';
+import { ElkLoggerConfig } from '../services/elk-logger.config';
+import { CircularFormatter } from '../formatters/records/circular.formatter';
+import { ObjectFormatter as RecordObjectFormatter } from '../formatters/records/object.formatter';
+import { PruneFormatter } from '../formatters/records/prune.formatter';
+import { PruneConfig } from '../formatters/prune.config';
+import { SortFieldsFormatter } from '../formatters/records/sort-fields.formatter';
+import { ElkLoggerService } from '../services/elk-logger.service';
+import { PruneEncoder } from '../formatters/encodes/prune.encoder';
+import { ElkLoggerServiceBuilder } from './elk-logger.service.builder';
+import { ObjectFormatterBuilder } from './object-formatter.builder';
+import { BaseObjectFormatter } from '../formatters/objects/base.object-formatter';
+
+describe(ElkLoggerServiceBuilder.name, () => {
+  let loggerBuilder: ElkLoggerServiceBuilder;
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        {
+          provide: ConfigService,
+          useValue: new MockConfigService(),
+        },
+        {
+          provide: ELK_IGNORE_FORMATTER_OBJECTS_DI,
+          useValue: [],
+        },
+        {
+          provide: ELK_OBJECT_FORMATTERS_DI,
+          useValue: [],
+        },
+        {
+          provide: ELK_SORT_FIELDS_DI,
+          useValue: [],
+        },
+        {
+          provide: ELK_DEFAULT_FIELDS_DI,
+          useValue: {
+            index: 'MyApplications',
+            markers: ['test'],
+            businessData: {
+              server: 'TestServer',
+            },
+          },
+        },
+        {
+          provide: ElkLoggerConfig,
+          inject: [
+            ConfigService,
+            ELK_IGNORE_FORMATTER_OBJECTS_DI,
+            ELK_OBJECT_FORMATTERS_DI,
+            ELK_SORT_FIELDS_DI,
+            ELK_DEFAULT_FIELDS_DI,
+          ],
+          useFactory: (
+            configService: ConfigService,
+            ignoreObjects: CheckObjectsType[],
+            objectFormatters: BaseObjectFormatter[],
+            sortFields: string[],
+            defaultFields?: ILogFields,
+          ) => {
+            return new ElkLoggerConfig(
+              configService,
+              ([] as CheckObjectsType[]).concat(ignoreObjects, objectFormatters),
+              sortFields,
+              defaultFields,
+            );
+          },
+        },
+        PruneConfig,
+        FullFormatter,
+        SimpleFormatter,
+        ShortFormatter,
+        PruneEncoder,
+        RecordEncodeFormattersFactory,
+        CircularFormatter,
+        {
+          provide: RecordObjectFormatter,
+          inject: [ElkLoggerConfig],
+          useFactory: (loggerConfig: ElkLoggerConfig) => {
+            return ObjectFormatterBuilder.build(loggerConfig);
+          },
+        },
+        PruneFormatter,
+        SortFieldsFormatter,
+        GeneralAsyncContextFormatter,
+        {
+          provide: ELK_FEATURE_FORMATTERS_DI,
+          useValue: [new MockFormatter()],
+        },
+        {
+          provide: ELK_FEATURE_ENCODERS_DI,
+          useValue: [new MockEncodeFormatter()],
+        },
+        FormattersFactory,
+        ElkLoggerServiceBuilder,
+      ],
+    }).compile();
+
+    loggerBuilder = module.get(ElkLoggerServiceBuilder);
+  });
+
+  afterEach(async () => {
+    jest.clearAllMocks();
+  });
+
+  it('default', async () => {
+    expect(loggerBuilder).toBeDefined();
+  });
+
+  it('default', async () => {
+    const logger = loggerBuilder.build();
+
+    expect(logger).toBeDefined();
+    expect(logger instanceof ElkLoggerService).toBeTruthy();
+    expect((logger as unknown as Record<string, unknown>)['defaultLogFields']).toEqual({
+      index: 'MyApplications',
+      markers: ['test'],
+      businessData: {
+        server: 'TestServer',
+      },
+    });
+  });
+
+  it('custom', async () => {
+    const logger = loggerBuilder.build({
+      index: 'TestApplications',
+      markers: ['request'],
+      businessData: {
+        subModule: 'SubModule',
+      },
+    } as ILogFields);
+
+    expect(logger).toBeDefined();
+    expect(logger instanceof ElkLoggerService).toBeTruthy();
+    expect((logger as unknown as Record<string, unknown>)['defaultLogFields']).toEqual({
+      index: 'TestApplications',
+      markers: ['test', 'request'],
+      businessData: {
+        server: 'TestServer',
+        subModule: 'SubModule',
+      },
+      payload: {},
+    });
+  });
+});

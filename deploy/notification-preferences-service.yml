@@ -1,0 +1,44 @@
+services:
+  notification-preferences-service:
+    build:
+      context: ../
+    container_name: 'notification-preferences-service'
+    restart: always
+    command: ["npm", "--prefix=/app", "run", "start:dev"]
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    networks:
+      - dev-local
+    develop:
+      watch:
+        # Исходники и ресурсы — nest start --watch перезапустит Node-процесс внутри контейнера
+        - action: sync
+          path: ../src
+          target: /app/src
+        - action: sync
+          path: ../front
+          target: /app/front
+        - action: sync
+          path: ../migrations
+          target: /app/migrations
+
+        # Конфигурация TS/Nest и переменные окружения — нужен рестарт контейнера
+        - action: sync+restart
+          path: ../tsconfig.json
+          target: /app/tsconfig.json
+        - action: sync+restart
+          path: ../tsconfig.build.json
+          target: /app/tsconfig.build.json
+        - action: sync+restart
+          path: ../nest-cli.json
+          target: /app/nest-cli.json
+        - action: sync+restart
+          path: ../.env
+          target: /app/.env
+
+        # Зависимости — пересборка образа с npm i
+        - action: rebuild
+          path: ../package.json
+        - action: rebuild
+          path: ../package-lock.json
