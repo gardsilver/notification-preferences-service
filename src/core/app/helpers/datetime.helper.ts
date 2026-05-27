@@ -1,3 +1,5 @@
+import { DateTimestamp } from 'src/modules/date-timestamp';
+
 // Регулярное выражение для строгой проверки формата HH:mm
 const TIME_REGEXP = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -35,5 +37,13 @@ export abstract class DatetimeHelper {
     const paddedMinutes = minutes.toString().padStart(2, '0');
 
     return `${paddedHours}:${paddedMinutes}`;
+  }
+
+  public static datetimeToLocalMinuteOfDay(datetime: DateTimestamp, timezone: string): number {
+    const localDatetime = datetime.clone().setTimezone(timezone);
+
+    const localMoment = localDatetime.getMoment();
+
+    return localMoment.hours() * 60 + localMoment.minutes();
   }
 }

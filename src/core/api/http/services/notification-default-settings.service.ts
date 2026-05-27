@@ -3,13 +3,13 @@ import {
   INotificationDefaultSettingsResult,
   NotificationDefaultSettingsService as RepositoryService,
 } from 'src/core/repositories/postgres';
+import { DatetimeHelper } from 'src/core/app';
 import { BaseResponseDto, ResponseStatus } from '../dto/base.dto';
 import {
   CreateNotificationDefaultSettingsRequestDto,
   NotificationDefaultSettingsResponseData,
   UpdateNotificationDefaultSettingsRequestDto,
 } from '../dto/notification-default-settings.dto';
-import { DatetimeHelper } from '../helpers/datetime.helper';
 
 @Injectable()
 export class NotificationDefaultSettingsService {

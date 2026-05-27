@@ -10,7 +10,7 @@ import {
   getSchemaPath,
   ApiParam,
 } from '@nestjs/swagger';
-import { GeneralAsyncContext, IGeneralAsyncContext } from 'src/modules/common';
+import { GeneralAsyncContext, IGeneralAsyncContext, SkipInterceptors } from 'src/modules/common';
 import { GracefulShutdownOnCount } from 'src/modules/graceful-shutdown';
 import { HttpGeneralAsyncContextHeaderNames } from 'src/modules/http/http-common';
 import { HttpGeneralAsyncContext } from 'src/modules/http/http-server';
@@ -56,6 +56,7 @@ export class HttpApiPersonController {
       ],
     },
   })
+  @SkipInterceptors(IdempotencyInterceptor)
   @GracefulShutdownOnCount()
   async infoPerson(
     @Param('id', ParseUUIDPipe) personId: string,

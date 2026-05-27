@@ -2,8 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsNotEmpty, IsOptional, ValidateIf, IsInt, Min, Max, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { enumValues } from 'src/modules/common/utils';
+import { DatetimeHelper } from 'src/core/app';
 import { NotificationType, NotificationStatus } from 'src/core/repositories/postgres';
-import { DatetimeHelper } from '../helpers/datetime.helper';
 
 const allowedPersonNotificationTypes = enumValues(NotificationType);
 const allowedPersonNotificationStatus = enumValues(NotificationStatus);

@@ -1,3 +1,5 @@
+import { DateTimestamp } from 'src/modules/date-timestamp';
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export enum PersonChannelStatus {
   DISABLED = 0,
@@ -89,4 +91,18 @@ export type IPersonWithChannels = IPerson & { channels: IPersonChannelWithSettin
 export interface INotificationDefaultSettingsResult extends INotificationDefaultSettings {
   type: NotificationType;
   quietRanges: IQuietRanges;
+}
+
+export interface ICheckSendNotification {
+  personId: string;
+  notificationType: NotificationType;
+  channelType: ChannelType;
+  regionCode?: string;
+  datetime: DateTimestamp;
+}
+
+export interface ICheckSendNotificationStatus {
+  status: boolean;
+  reason?: string;
+  channelIds?: string[];
 }

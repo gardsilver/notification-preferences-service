@@ -1,4 +1,5 @@
 export * from './types/constants';
+export * from './helpers/datetime.helper';
 export * from './services/app.config';
 export * from './factories/logger/ignore-objects.factory';
 export * from './factories/logger/error.formatters.factory';
