@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import {
-  INotificationDefaultSettings,
-  QuietRangesHelper,
+  INotificationDefaultSettingsResult,
   NotificationDefaultSettingsService as RepositoryService,
 } from 'src/core/repositories/postgres';
 import { BaseResponseDto, ResponseStatus } from '../dto/base.dto';
@@ -10,6 +9,7 @@ import {
   NotificationDefaultSettingsResponseData,
   UpdateNotificationDefaultSettingsRequestDto,
 } from '../dto/notification-default-settings.dto';
+import { DatetimeHelper } from '../helpers/datetime.helper';
 
 @Injectable()
 export class NotificationDefaultSettingsService {
@@ -19,14 +19,11 @@ export class NotificationDefaultSettingsService {
     dto: CreateNotificationDefaultSettingsRequestDto,
   ): Promise<BaseResponseDto<NotificationDefaultSettingsResponseData>> {
     try {
-      const savedPerson = await this.repositoryService.create(
-        this.mapDto(dto) as unknown as INotificationDefaultSettings,
+      const settings = await this.repositoryService.create(
+        this.mapDto(dto) as unknown as INotificationDefaultSettingsResult,
       );
 
-      return {
-        status: ResponseStatus.SUCCESS,
-        data: { id: savedPerson.id! },
-      };
+      return this.mapResponse(settings);
     } catch (error: unknown) {
       if (
         typeof error == 'object' &&
@@ -52,15 +49,12 @@ export class NotificationDefaultSettingsService {
     dto: UpdateNotificationDefaultSettingsRequestDto,
   ): Promise<BaseResponseDto<NotificationDefaultSettingsResponseData>> {
     try {
-      const savedPerson = await this.repositoryService.update(
+      const settings = await this.repositoryService.update(
         dto.id,
-        this.mapDto(dto) as unknown as INotificationDefaultSettings,
+        this.mapDto(dto) as unknown as INotificationDefaultSettingsResult,
       );
 
-      return {
-        status: ResponseStatus.SUCCESS,
-        data: { id: savedPerson.id! },
-      };
+      return this.mapResponse(settings);
     } catch (error: unknown) {
       if (
         typeof error == 'object' &&
@@ -84,15 +78,32 @@ export class NotificationDefaultSettingsService {
 
   private mapDto(
     dto: CreateNotificationDefaultSettingsRequestDto | UpdateNotificationDefaultSettingsRequestDto,
-  ): Partial<INotificationDefaultSettings> {
-    const settings: Partial<INotificationDefaultSettings> = {
+  ): Partial<INotificationDefaultSettingsResult> {
+    const settings: Partial<INotificationDefaultSettingsResult> = {
       type: dto.type,
     };
 
     if (dto.quietStart !== undefined && dto.quietFinish !== undefined) {
-      settings.quietRanges = QuietRangesHelper.convertMinutesToQuietRanges(dto.quietStart, dto.quietFinish);
+      settings.quietRanges = {
+        quietStart: dto.quietStart,
+        quietFinish: dto.quietFinish,
+      };
     }
 
     return settings;
+  }
+
+  private mapResponse(
+    settings: INotificationDefaultSettingsResult,
+  ): BaseResponseDto<NotificationDefaultSettingsResponseData> {
+    return {
+      status: ResponseStatus.SUCCESS,
+      data: {
+        ...{ ...settings, quietRanges: undefined },
+        id: settings.id ? settings.id : '',
+        quietStart: DatetimeHelper.minutesToTime(settings.quietRanges.quietStart) || '00',
+        quietFinish: DatetimeHelper.minutesToTime(settings.quietRanges.quietFinish) || '00',
+      },
+    };
   }
 }

@@ -4,7 +4,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   NotificationDefaultSettingsService as RepositoryService,
   NotificationType,
-  QuietRangesHelper,
 } from 'src/core/repositories/postgres';
 import { NotificationDefaultSettingsService } from './notification-default-settings.service';
 import { ResponseStatus } from '../dto/base.dto';
@@ -37,6 +36,10 @@ describe('NotificationDefaultSettingsService (API layer)', () => {
     it('should create and return id', async () => {
       repositoryMock.create.mockResolvedValue({
         id: '123',
+        quietRanges: {
+          quietStart: 10,
+          quietFinish: 20,
+        },
       });
 
       const dto = {
@@ -51,7 +54,7 @@ describe('NotificationDefaultSettingsService (API layer)', () => {
 
       expect(result).toEqual({
         status: ResponseStatus.SUCCESS,
-        data: { id: '123' },
+        data: { id: '123', quietStart: '00:10', quietFinish: '00:20' },
       });
     });
 
@@ -92,6 +95,10 @@ describe('NotificationDefaultSettingsService (API layer)', () => {
     it('should update and return id', async () => {
       repositoryMock.update.mockResolvedValue({
         id: '999',
+        quietRanges: {
+          quietStart: 5,
+          quietFinish: 15,
+        },
       });
 
       const dto = {
@@ -107,13 +114,13 @@ describe('NotificationDefaultSettingsService (API layer)', () => {
         '999',
         expect.objectContaining({
           type: NotificationType.SYSTEM,
-          quietRanges: QuietRangesHelper.convertMinutesToQuietRanges(5, 15),
+          quietRanges: { quietStart: 5, quietFinish: 15 },
         }),
       );
 
       expect(result).toEqual({
         status: ResponseStatus.SUCCESS,
-        data: { id: '999' },
+        data: { id: '999', quietStart: '00:05', quietFinish: '00:15' },
       });
     });
 

@@ -85,3 +85,8 @@ export interface IChannelSettings {
 
 export type IPersonChannelWithSettings = IPersonChannel & { settings?: IChannelSettings[] };
 export type IPersonWithChannels = IPerson & { channels: IPersonChannelWithSettings[] };
+
+export interface INotificationDefaultSettingsResult extends INotificationDefaultSettings {
+  type: NotificationType;
+  quietRanges: IQuietRanges;
+}

@@ -7,8 +7,8 @@ DC := docker compose -f base-compose.yml -f notification-preferences-service.yml
 # (в WSL без systemd `/run/user/$UID` не существует — compose watch там падает при попытке
 # взять exclusive-lock).
 WATCH_DIR := /tmp/docker-compose-$(shell id -u)
-WATCH_PID := $(WATCH_DIR)/dhms-watch.pid
-WATCH_LOG := $(WATCH_DIR)/dhms-watch.log
+WATCH_PID := $(WATCH_DIR)/nps-watch.pid
+WATCH_LOG := $(WATCH_DIR)/nps-watch.log
 
 .PHONY: help
 help: ## Показать список доступных команд

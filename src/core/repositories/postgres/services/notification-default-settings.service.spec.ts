@@ -2,10 +2,10 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/sequelize';
+import { DATABASE_DI } from 'src/modules/database';
+import { NotificationType } from '../types/types';
 import { NotificationDefaultSettingsService } from './notification-default-settings.service';
 import { NotificationDefaultSettingsModel } from '../entities/notification-default-settings.model';
-import { NotificationType } from '../types/types';
-import { DATABASE_DI } from 'src/modules/database';
 
 const mockRepository = {
   findOne: jest.fn(),
@@ -78,13 +78,17 @@ describe('NotificationDefaultSettingsService', () => {
     it('should create and return plain object', async () => {
       const input = {
         type: NotificationType.SYSTEM,
-        quietRanges: '{}',
+        quietRanges: {
+          quietStart: 0,
+          quietFinish: 0,
+        },
       };
 
       const model = {
         get: jest.fn().mockReturnValue({
           id: '123',
           ...input,
+          quietRanges: '{[0,0]}',
         }),
       };
 
@@ -92,11 +96,21 @@ describe('NotificationDefaultSettingsService', () => {
 
       const result = await service.create(input as any);
 
-      expect(mockRepository.create).toHaveBeenCalledWith(input, expect.objectContaining({}));
+      expect(mockRepository.create).toHaveBeenCalledWith(
+        {
+          ...input,
+          quietRanges: '{[0,0]}',
+        },
+        expect.objectContaining({}),
+      );
 
       expect(result).toEqual({
         id: '123',
         ...input,
+        quietRanges: {
+          quietFinish: 0,
+          quietStart: 0,
+        },
       });
     });
   });
@@ -107,7 +121,10 @@ describe('NotificationDefaultSettingsService', () => {
 
       const updateData = {
         type: NotificationType.SYSTEM,
-        quietRanges: '{}',
+        quietRanges: {
+          quietStart: 0,
+          quietFinish: 0,
+        },
       };
 
       mockRepository.update.mockResolvedValue([1]);
@@ -116,7 +133,7 @@ describe('NotificationDefaultSettingsService', () => {
         get: jest.fn().mockReturnValue({
           id,
           type: updateData.type,
-          quietRanges: updateData.quietRanges,
+          quietRanges: '{[0,0]}',
         }),
       });
 
@@ -125,6 +142,7 @@ describe('NotificationDefaultSettingsService', () => {
       expect(mockRepository.update).toHaveBeenCalledWith(
         expect.objectContaining({
           ...updateData,
+          quietRanges: '{[0,0]}',
           updatedAt: expect.any(Date),
         }),
         expect.objectContaining({
@@ -135,7 +153,10 @@ describe('NotificationDefaultSettingsService', () => {
       expect(result).toEqual({
         id,
         type: updateData.type,
-        quietRanges: updateData.quietRanges,
+        quietRanges: {
+          quietFinish: 0,
+          quietStart: 0,
+        },
       });
     });
 
@@ -169,7 +190,10 @@ describe('NotificationDefaultSettingsService', () => {
 
       expect(mockRepository.findAll).toHaveBeenCalled();
 
-      expect(result).toEqual([{ id: '1' }, { id: '2' }]);
+      expect(result).toEqual([
+        { id: '1', quietRanges: { quietFinish: 0, quietStart: 0 } },
+        { id: '2', quietRanges: { quietFinish: 0, quietStart: 0 } },
+      ]);
     });
   });
 });

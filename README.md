@@ -26,7 +26,7 @@ make dc-start           # Поднимает инфраструктуру + ми
 make dc-logs            # Последние 50 строк логов микросервиса с отслеживанием
 ```
 
-`make dc-start` автоматически запускает **Docker Compose Watch** в фоновом процессе — правки в `src/**` подхватываются без рестарта контейнера (`nest start --watch` сам перезапускает Node-процесс), конфиги и `.env` — через `sync+restart` и `package.json` — через `rebuild`. Лог watch-процесса можно посмотреть через `make dc-watch-log`, перезапустить — через `make dc-watch`. `make dc-down` останавливает и контейнеры, и фоновый watch. Подробности — в [`deploy/README.md`](./deploy/README.md).
+`make dc-start` автоматически запускает **Docker Compose Watch** в фоновом процессе — правки в `src/**` подхватываются без рестарта контейнера (`nest start --watch` сам перезапускает Node-процесс), конфиги и `.env` — через `sync+restart` и `package.json` — через `rebuild`. Лог watch-процесса можно посмотреть через `make dc-watch-log`, перезапустить — через `make dc-watch`. `make dc-stop` останавливает и контейнеры, и фоновый watch. Подробности — в [`deploy/README.md`](./deploy/README.md).
 
 После старта доступны:
 
