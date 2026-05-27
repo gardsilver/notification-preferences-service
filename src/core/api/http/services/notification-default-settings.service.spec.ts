@@ -5,8 +5,8 @@ import {
   NotificationDefaultSettingsService as RepositoryService,
   NotificationType,
 } from 'src/core/repositories/postgres';
-import { NotificationDefaultSettingsService } from './notification-default-settings.service';
 import { ResponseStatus } from '../dto/base.dto';
+import { NotificationDefaultSettingsService } from './notification-default-settings.service';
 
 describe('NotificationDefaultSettingsService (API layer)', () => {
   let service: NotificationDefaultSettingsService;

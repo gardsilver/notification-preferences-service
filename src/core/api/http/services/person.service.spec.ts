@@ -2,12 +2,11 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { InternalServerErrorException, BadRequestException } from '@nestjs/common';
-
-import { PersonService } from './person.service';
 import { PersonService as RepositoryService } from 'src/core/repositories/postgres';
 import { ResponseStatus } from '../dto/base.dto';
+import { PersonService } from './person.service';
 
-jest.mock('../helpers/datetime.helper', () => ({
+jest.mock('src/core/app/helpers/datetime.helper', () => ({
   DatetimeHelper: {
     minutesToTime: jest.fn((v: number) => `T${v}`),
   },

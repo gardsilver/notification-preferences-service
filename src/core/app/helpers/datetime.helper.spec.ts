@@ -1,3 +1,4 @@
+import { DateTimestamp } from 'src/modules/date-timestamp';
 import { DatetimeHelper } from './datetime.helper';
 
 describe('DatetimeHelper', () => {
@@ -47,5 +48,51 @@ describe('DatetimeHelper', () => {
       expect(DatetimeHelper.minutesToTime(Infinity)).toBeNull();
       expect(DatetimeHelper.minutesToTime(-Infinity)).toBeNull();
     });
+  });
+});
+
+describe('datetimeToLocalMinuteOfDay', () => {
+  it('should return correct minute of day for UTC timezone', () => {
+    const datetime = new DateTimestamp('2024-01-01 12:30:00');
+
+    const result = DatetimeHelper.datetimeToLocalMinuteOfDay(datetime, 'UTC');
+
+    // Moscow +03:00 -> UTC 09:30
+    expect(result).toBe(9 * 60 + 30);
+  });
+
+  it('should return correct minute of day for another timezone', () => {
+    const datetime = new DateTimestamp('2024-01-01 12:30:00');
+
+    const result = DatetimeHelper.datetimeToLocalMinuteOfDay(datetime, 'Europe/Berlin');
+
+    // Moscow +03:00 -> Berlin +01:00 = 10:30
+    expect(result).toBe(10 * 60 + 30);
+  });
+
+  it('should correctly handle day rollover', () => {
+    const datetime = new DateTimestamp('2024-01-01 01:15:00');
+
+    const result = DatetimeHelper.datetimeToLocalMinuteOfDay(datetime, 'UTC');
+
+    // Moscow +03:00 -> UTC previous day 22:15
+    expect(result).toBe(22 * 60 + 15);
+  });
+
+  it('should not mutate original datetime', () => {
+    const datetime = new DateTimestamp('2024-01-01 12:30:00');
+
+    DatetimeHelper.datetimeToLocalMinuteOfDay(datetime, 'UTC');
+
+    expect(datetime.format('YYYY-MM-DD HH:mm:ss Z')).toBe('2024-01-01 12:30:00 +03:00');
+  });
+
+  it('should support daylight saving timezone', () => {
+    const datetime = new DateTimestamp('2024-07-01 12:00:00');
+
+    const result = DatetimeHelper.datetimeToLocalMinuteOfDay(datetime, 'Europe/Berlin');
+
+    // Moscow +03:00 -> Berlin summer time +02:00 = 11:00
+    expect(result).toBe(11 * 60);
   });
 });

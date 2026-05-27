@@ -16,6 +16,7 @@ import { NotificationDefaultSettingsService } from './services/notification-defa
 import { PersonChannelService } from './services/person-channel.service';
 import { RedisCacheManagerModule } from 'src/modules/redis-cache-manager';
 import { PersonChannelNotificationSettingsService } from './services/person-channel-notification-settings.service';
+import { PersonNotificationService } from './services/person-notification.service';
 
 @Module({
   imports: [
@@ -42,8 +43,14 @@ import { PersonChannelNotificationSettingsService } from './services/person-chan
     PersonChannelNotificationSettingsService,
     PersonChannelService,
     PersonService,
+    PersonNotificationService,
     NotificationDefaultSettingsService,
   ],
-  exports: [API_IDEMPOTENCY_SERVICE_TOKEN, PersonService, NotificationDefaultSettingsService],
+  exports: [
+    API_IDEMPOTENCY_SERVICE_TOKEN,
+    PersonService,
+    PersonNotificationService,
+    NotificationDefaultSettingsService,
+  ],
 })
 export class PostgresModule {}
