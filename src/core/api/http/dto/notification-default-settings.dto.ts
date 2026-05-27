@@ -111,4 +111,20 @@ export class NotificationDefaultSettingsResponseData {
     example: '00000000-0000-0000-0000-000000000000',
   })
   id!: string;
+
+  @ApiProperty({
+    description: 'Информационный канал',
+    enum: NotificationType,
+  })
+  type!: NotificationType;
+
+  @ApiProperty({
+    description: 'Начало периода тишины (HH:mm)',
+  })
+  quietStart!: string;
+
+  @ApiProperty({
+    description: 'Окончание тишины (HH:mm)',
+  })
+  quietFinish!: string;
 }

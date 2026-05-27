@@ -16,14 +16,14 @@
 
 ## Установка и настройка
 
-Все часто используемые команды указаны в `makefile`. Запускаются **из каталога `deploy/`**. Базовые команды (`dc-start`, `dc-watch`, `dc-down`, `dc-logs`) также проксированы в корневой `makefile` — их можно вызывать из корня проекта.
+Все часто используемые команды указаны в `makefile`. Запускаются **из каталога `deploy/`**. Базовые команды (`dc-start`, `dc-watch`, `dc-stop`, `dc-logs`) также проксированы в корневой `makefile` — их можно вызывать из корня проекта.
 
 | **make**-команда | Описание |
 |---|---|
 | `make dc-start` | Поднимает все контейнеры (`docker compose ... up -d`) **и запускает Docker Compose Watch в фоне**. Терминал не блокируется. |
 | `make dc-watch` | Перезапускает фоновый watch-процесс (если упал или нужно обновить). Не блокирует терминал. |
 | `make dc-watch-log` | Follow лога фонового watch (`tail -f $(WATCH_LOG)`). Блокирующий, `Ctrl+C` останавливает только просмотр. |
-| `make dc-down` | Останавливает **фоновый watch и все контейнеры** (`docker compose ... down`). |
+| `make dc-stop` | Останавливает **фоновый watch и все контейнеры** (`docker compose ... down`). |
 | `make dc-rm-all` | Останавливает контейнеры и полностью очищает Docker (`system prune` с volumes и images). |
 | `make dc-down-postgres` | Останавливает **Postgres**. |
 | `make dc-down-redis` | Останавливает **Redis**. |
@@ -74,7 +74,7 @@
 Типичный dev-workflow — две команды из корня проекта:
 
 ```bash
-make dc-start   # поднимает контейнеры detached + запускает Docker Compose Watch в фоне (PID в /tmp/docker-compose-$UID/dhms-watch.pid)
+make dc-start   # поднимает контейнеры detached + запускает Docker Compose Watch в фоне (PID в /tmp/docker-compose-$UID/nps-watch.pid)
 make dc-logs    # follow логов микросервиса
 ```
 
