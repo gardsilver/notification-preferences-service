@@ -16,6 +16,7 @@ import { PersonChannelNotificationSettingsModel } from '../entities/person-chann
 import { PrometheusMetricConfigOnService, PrometheusOnMethod } from 'src/modules/prometheus';
 import { ElkLoggerOnMethod, ElkLoggerOnService } from 'src/modules/elk-logger';
 import { LoggerMarkers } from 'src/modules/common';
+import { NotificationPolicyModel } from '../entities/notification-policy.model';
 
 @PrometheusMetricConfigOnService({
   labels: {
@@ -38,7 +39,8 @@ export class PersonNotificationService {
     private readonly db: Sequelize,
     @Inject(getModelToken(PersonModel))
     private readonly personRepository: typeof PersonModel,
-
+    @Inject(getModelToken(NotificationPolicyModel))
+    private readonly policyRepository: typeof NotificationPolicyModel,
     @Inject(getModelToken(PersonChannelModel))
     private readonly channelRepository: typeof PersonChannelModel,
   ) {}
@@ -102,6 +104,23 @@ export class PersonNotificationService {
       return {
         status: false,
         reason: data.regionCode ? 'Person not found for region' : 'Person not found',
+      };
+    }
+
+    const globalPolicy = await this.policyRepository.findOne({
+      where: {
+        notificationType: data.notificationType,
+        channelType: data.channelType,
+        regionCode: person.regionCode,
+      },
+      attributes: ['status'],
+    });
+
+    // Если политика существует и она отключена (DISABLED = 0)
+    if (globalPolicy && globalPolicy.status === NotificationStatus.DISABLED) {
+      return {
+        status: false,
+        reason: 'Blocked by global notification policy',
       };
     }
 

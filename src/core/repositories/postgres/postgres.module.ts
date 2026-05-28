@@ -6,6 +6,7 @@ import { PrometheusModule } from 'src/modules/prometheus';
 import { PersonModel } from './entities/person.model';
 import { PersonChannelModel } from './entities/person-channel.model';
 import { PersonChannelNotificationSettingsModel } from './entities/person-channel-notification-settings.model';
+import { NotificationPolicyModel } from './entities/notification-policy.model';
 import { REPOSITORIES } from './types/repositories';
 import { ApiIdempotencyService } from './services/api-idempotency.service';
 import { PersonService } from './services/person.service';
@@ -17,6 +18,7 @@ import { PersonChannelService } from './services/person-channel.service';
 import { RedisCacheManagerModule } from 'src/modules/redis-cache-manager';
 import { PersonChannelNotificationSettingsService } from './services/person-channel-notification-settings.service';
 import { PersonNotificationService } from './services/person-notification.service';
+import { NotificationPolicyService } from './services/notification-policy.service';
 
 @Module({
   imports: [
@@ -31,6 +33,7 @@ import { PersonNotificationService } from './services/person-notification.servic
         PersonChannelModel,
         PersonChannelNotificationSettingsModel,
         NotificationDefaultSettingsModel,
+        NotificationPolicyModel,
       ],
     }),
   ],
@@ -45,12 +48,14 @@ import { PersonNotificationService } from './services/person-notification.servic
     PersonService,
     PersonNotificationService,
     NotificationDefaultSettingsService,
+    NotificationPolicyService,
   ],
   exports: [
     API_IDEMPOTENCY_SERVICE_TOKEN,
     PersonService,
     PersonNotificationService,
     NotificationDefaultSettingsService,
+    NotificationPolicyService,
   ],
 })
 export class PostgresModule {}

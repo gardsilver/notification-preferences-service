@@ -12,6 +12,9 @@ import { ErrorHandler } from './handlers/error.handler';
 import { PersonDtoMapper } from './mappers/person.dto-mapper';
 import { PersonNotificationDtoMapper } from './mappers/person-notification.dto-mapper';
 import { NotificationDefaultSettingsDtoMapper } from './mappers/notification-default-settings.dto-mapper';
+import { NotificationPolicyMapper } from './mappers/notification-policy.dto-mapper';
+import { NotificationPolicyService } from './services/notification-policy.service';
+import { HttpApiNotificationPolicyController } from './controllers/notification-policy.controller';
 
 @Module({
   imports: [PostgresModule, CommonApiModule],
@@ -24,10 +27,13 @@ import { NotificationDefaultSettingsDtoMapper } from './mappers/notification-def
     PersonNotificationService,
     NotificationDefaultSettingsDtoMapper,
     NotificationDefaultSettingsService,
+    NotificationPolicyMapper,
+    NotificationPolicyService,
   ],
   controllers: [
     HttpApiPersonController,
     HttpApiNotificationDefaultSettingsController,
+    HttpApiNotificationPolicyController,
     HttpApiPersonNotificationController,
   ],
 })

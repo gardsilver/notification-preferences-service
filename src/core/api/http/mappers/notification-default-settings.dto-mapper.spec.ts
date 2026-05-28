@@ -59,7 +59,6 @@ describe('NotificationDefaultSettingsDtoMapper', () => {
 
   describe('toResponse', () => {
     it('should successfully map repository result to response and convert minutes to time string', () => {
-       
       (DatetimeHelper.minutesToTime as jest.Mock).mockReturnValueOnce('01:00').mockReturnValueOnce('03:00');
 
       const mockSettings: any = {

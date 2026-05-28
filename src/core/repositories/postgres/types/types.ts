@@ -68,6 +68,13 @@ export interface IPersonChannelNotificationSettings extends IEntity<string> {
   quietRanges: unknown; // Представляет int4multirange из БД
 }
 
+export interface INotificationPolicy extends IEntity<string> {
+  status: NotificationStatus;
+  notificationType: NotificationType;
+  channelType: ChannelType;
+  regionCode: string;
+}
+
 // @TODO Ограничение BIGINT!
 export interface INotificationDefaultSettings extends IEntity<string> {
   type: NotificationType;

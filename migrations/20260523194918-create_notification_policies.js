@@ -10,13 +10,13 @@ module.exports = {
       await queryInterface.createTable(
         'notification_policies', 
         {
-          id : {
-            type: DataTypes.BIGINT,
+          id: {
+            type: DataTypes.UUID,
+            defaultValue: Sequelize.literal('gen_random_uuid()'),
             unique: true,
             allowNull: false,
-            autoIncrement: true,
             primaryKey: true,
-            comment: 'primaryKey'
+            comment: 'primaryKey',
           },
           created_at: {
             type: DataTypes.DATE,
@@ -58,16 +58,10 @@ module.exports = {
         }
       );
 
-      await queryInterface.addConstraint('notification_policies', {
-        type: 'CHECK',
-        fields: ['id'],
-        name: 'indxnp_check_min_id',
-        where: {
-          id: {
-            [Op.gte]: 0
-          }
-        },
-        transaction
+      await queryInterface.addIndex('notification_policies', ['channel_type', 'notification_type', 'region_code'], {
+        name: 'indxnp_channel_notification_region',
+        unique: true,
+        transaction,
       });
 
       transaction.commit();
