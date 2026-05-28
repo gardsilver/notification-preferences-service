@@ -1,19 +1,28 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  NotificationDefaultSettingsService as RepositoryService,
-  NotificationType,
-} from 'src/core/repositories/postgres';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { NotificationDefaultSettingsService as RepositoryService } from 'src/core/repositories/postgres';
 import { ResponseStatus } from '../dto/base.dto';
 import { NotificationDefaultSettingsService } from './notification-default-settings.service';
+import { NotificationDefaultSettingsDtoMapper } from '../mappers/notification-default-settings.dto.mapper';
+import { ErrorHandler } from '../handlers/error.handler';
 
-describe('NotificationDefaultSettingsService (API layer)', () => {
+describe('NotificationDefaultSettingsService', () => {
   let service: NotificationDefaultSettingsService;
 
+  // Моки внешних зависимостей
   const repositoryMock = {
     create: jest.fn(),
     update: jest.fn(),
+  };
+
+  const mapperMock = {
+    toRepositoryInput: jest.fn(),
+    toResponse: jest.fn(),
+  };
+
+  const errorHandlerMock = {
+    handle: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -26,134 +35,93 @@ describe('NotificationDefaultSettingsService (API layer)', () => {
           provide: RepositoryService,
           useValue: repositoryMock,
         },
+        {
+          provide: NotificationDefaultSettingsDtoMapper,
+          useValue: mapperMock,
+        },
+        {
+          provide: ErrorHandler,
+          useValue: errorHandlerMock,
+        },
       ],
     }).compile();
 
-    service = module.get(NotificationDefaultSettingsService);
+    service = module.get<NotificationDefaultSettingsService>(NotificationDefaultSettingsService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
   });
 
   describe('create', () => {
-    it('should create and return id', async () => {
-      repositoryMock.create.mockResolvedValue({
-        id: '123',
-        quietRanges: {
-          quietStart: 10,
-          quietFinish: 20,
-        },
-      });
-
-      const dto = {
-        type: NotificationType.SYSTEM,
-        quietStart: 10,
-        quietFinish: 20,
-      } as any;
-
-      const result = await service.create(dto);
-
-      expect(repositoryMock.create).toHaveBeenCalled();
-
-      expect(result).toEqual({
+    it('should transform DTO, call repository create and return mapped response', async () => {
+      const mockDto: any = { type: 'EMAIL', quietStart: 60 };
+      const mockRepoInput = { type: 'EMAIL', quietRanges: { quietStart: 60 } };
+      const mockDbResult = { id: 'settings-1', type: 'EMAIL' };
+      const mockFinalResponse = {
         status: ResponseStatus.SUCCESS,
-        data: { id: '123', quietStart: '00:10', quietFinish: '00:20' },
-      });
+        data: { id: 'settings-1', type: 'EMAIL' },
+      };
+
+      mapperMock.toRepositoryInput.mockReturnValue(mockRepoInput);
+      repositoryMock.create.mockResolvedValue(mockDbResult);
+      mapperMock.toResponse.mockReturnValue(mockFinalResponse);
+
+      const result = await service.create(mockDto);
+
+      expect(mapperMock.toRepositoryInput).toHaveBeenCalledWith(mockDto);
+      expect(repositoryMock.create).toHaveBeenCalledWith(mockRepoInput);
+      expect(mapperMock.toResponse).toHaveBeenCalledWith(mockDbResult);
+      expect(result).toEqual(mockFinalResponse);
     });
 
-    it('should throw BadRequestException on unique constraint', async () => {
-      repositoryMock.create.mockRejectedValue({
-        name: 'SequelizeUniqueConstraintError',
+    it('should delegate repository errors to ErrorHandler with context "NotificationDefaultSettings"', async () => {
+      const mockDto: any = { type: 'EMAIL' };
+      const dbError = new Error('Unique constraint violation');
+
+      repositoryMock.create.mockRejectedValue(dbError);
+      errorHandlerMock.handle.mockImplementation(() => {
+        throw new BadRequestException();
       });
 
-      await expect(
-        service.create({
-          type: NotificationType.SYSTEM,
-          quietStart: 10,
-          quietFinish: 20,
-        } as any),
-      ).rejects.toMatchObject({
-        response: {
-          status: ResponseStatus.ERROR,
-        },
-      });
-    });
-
-    it('should throw InternalServerErrorException on unknown error', async () => {
-      repositoryMock.create.mockRejectedValue(new Error('DB fail'));
-
-      await expect(
-        service.create({
-          type: NotificationType.SYSTEM,
-        } as any),
-      ).rejects.toMatchObject({
-        response: {
-          status: ResponseStatus.ERROR,
-        },
-      });
+      await expect(service.create(mockDto)).rejects.toBeInstanceOf(BadRequestException);
+      expect(errorHandlerMock.handle).toHaveBeenCalledWith(dbError, 'NotificationDefaultSettings');
     });
   });
 
   describe('update', () => {
-    it('should update and return id', async () => {
-      repositoryMock.update.mockResolvedValue({
-        id: '999',
-        quietRanges: {
-          quietStart: 5,
-          quietFinish: 15,
-        },
-      });
-
-      const dto = {
-        id: '999',
-        type: NotificationType.SYSTEM,
-        quietStart: 5,
-        quietFinish: 15,
-      } as any;
-
-      const result = await service.update(dto);
-
-      expect(repositoryMock.update).toHaveBeenCalledWith(
-        '999',
-        expect.objectContaining({
-          type: NotificationType.SYSTEM,
-          quietRanges: { quietStart: 5, quietFinish: 15 },
-        }),
-      );
-
-      expect(result).toEqual({
+    it('should transform DTO, call repository update with id and return mapped response', async () => {
+      const mockDto: any = { id: 'settings-2', type: 'SMS' };
+      const mockRepoInput = { type: 'SMS' };
+      const mockDbResult = { id: 'settings-2', type: 'SMS' };
+      const mockFinalResponse = {
         status: ResponseStatus.SUCCESS,
-        data: { id: '999', quietStart: '00:05', quietFinish: '00:15' },
-      });
+        data: { id: 'settings-2', type: 'SMS' },
+      };
+
+      mapperMock.toRepositoryInput.mockReturnValue(mockRepoInput);
+      repositoryMock.update.mockResolvedValue(mockDbResult);
+      mapperMock.toResponse.mockReturnValue(mockFinalResponse);
+
+      const result = await service.update(mockDto);
+
+      expect(mapperMock.toRepositoryInput).toHaveBeenCalledWith(mockDto);
+      expect(repositoryMock.update).toHaveBeenCalledWith('settings-2', mockRepoInput);
+      expect(mapperMock.toResponse).toHaveBeenCalledWith(mockDbResult);
+      expect(result).toEqual(mockFinalResponse);
     });
 
-    it('should throw BadRequestException on unique constraint', async () => {
-      repositoryMock.update.mockRejectedValue({
-        name: 'SequelizeUniqueConstraintError',
+    it('should delegate update errors to ErrorHandler with context "NotificationDefaultSettings"', async () => {
+      const mockDto: any = { id: 'settings-2' };
+      const dbError = new Error('Database crash');
+
+      repositoryMock.update.mockRejectedValue(dbError);
+      errorHandlerMock.handle.mockImplementation(() => {
+        throw new InternalServerErrorException();
       });
 
-      await expect(
-        service.update({
-          id: '1',
-          type: NotificationType.SYSTEM,
-        } as any),
-      ).rejects.toMatchObject({
-        response: {
-          status: ResponseStatus.ERROR,
-        },
-      });
-    });
-
-    it('should throw InternalServerErrorException on unknown error', async () => {
-      repositoryMock.update.mockRejectedValue(new Error('DB fail'));
-
-      await expect(
-        service.update({
-          id: '1',
-          type: NotificationType.SYSTEM,
-        } as any),
-      ).rejects.toMatchObject({
-        response: {
-          status: ResponseStatus.ERROR,
-        },
-      });
+      await expect(service.update(mockDto)).rejects.toBeInstanceOf(InternalServerErrorException);
+      expect(errorHandlerMock.handle).toHaveBeenCalledWith(dbError, 'NotificationDefaultSettings');
     });
   });
 });
