@@ -1,139 +1,96 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { Test, TestingModule } from '@nestjs/testing';
 import { InternalServerErrorException } from '@nestjs/common';
-import { DateTimestamp } from 'src/modules/date-timestamp';
-import { ChannelType, NotificationType } from 'src/core/repositories/postgres';
-import { PersonNotificationService } from './person-notification.service';
-import { PersonalCheckSendNotificationRequestDto } from '../dto/personal-check-send-notification.dto';
+import { PersonNotificationService as RepositoryService } from 'src/core/repositories/postgres';
 import { ResponseStatus } from '../dto/base.dto';
+import { PersonNotificationService } from './person-notification.service';
+import { PersonNotificationDtoMapper } from '../mappers/person-notification.dto-mapper';
+import { ErrorHandler } from '../handlers/error.handler';
 
 describe('PersonNotificationService', () => {
   let service: PersonNotificationService;
 
-  let repositoryService: {
-    checkSend: jest.Mock;
+  // Изолированные моки для всех внешних зависимостей
+  const repositoryMock = {
+    checkSend: jest.fn(),
   };
 
-  beforeEach(() => {
-    repositoryService = {
-      checkSend: jest.fn(),
-    };
+  const mapperMock = {
+    toRepositoryInput: jest.fn(),
+    toResponse: jest.fn(),
+  };
 
-    service = new PersonNotificationService(repositoryService as any);
+  const errorHandlerMock = {
+    handle: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PersonNotificationService,
+        {
+          provide: RepositoryService,
+          useValue: repositoryMock,
+        },
+        {
+          provide: PersonNotificationDtoMapper,
+          useValue: mapperMock,
+        },
+        {
+          provide: ErrorHandler,
+          useValue: errorHandlerMock,
+        },
+      ],
+    }).compile();
+
+    service = module.get<PersonNotificationService>(PersonNotificationService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
   });
 
   describe('checkSend', () => {
-    const dto: PersonalCheckSendNotificationRequestDto = {
-      personId: '00000000-0000-0000-0000-000000000000',
-      notificationType: NotificationType.MARKETING,
-      channelType: ChannelType.EMAIL,
-      regionCode: 'RU',
-      datetime: '2026-05-21T21:30:00Z',
-    };
+    it('should transform DTO, call repository and return mapped response successfully', async () => {
+      const mockDto: any = { personId: '123', datetime: '2026-05-28' };
+      const mockRepoInput = { personId: '123' };
+      const mockDbResult = { status: true, reason: 'Allowed' };
+      const mockFinalResponse = {
+        status: ResponseStatus.SUCCESS, // или ResponseStatus.ALLOW в зависимости от ваших DTO
+        details: 'Allowed',
+      };
 
-    it('should return ALLOW response with channel ids', async () => {
-      repositoryService.checkSend.mockResolvedValue({
-        status: true,
-        channelIds: ['channel-1', 'channel-2'],
-      });
+      // Настраиваем цепочку вызовов моков
+      mapperMock.toRepositoryInput.mockReturnValue(mockRepoInput);
+      repositoryMock.checkSend.mockResolvedValue(mockDbResult);
+      mapperMock.toResponse.mockReturnValue(mockFinalResponse);
 
-      const result = await service.checkSend(dto);
+      const result = await service.checkSend(mockDto);
 
-      expect(result).toEqual({
-        status: ResponseStatus.ALLOW,
-        details: undefined,
-        data: {
-          channelIds: ['channel-1', 'channel-2'],
-        },
-      });
+      // Проверяем корректность вызовов и переданных аргументов
+      expect(mapperMock.toRepositoryInput).toHaveBeenCalledWith(mockDto);
+      expect(repositoryMock.checkSend).toHaveBeenCalledWith(mockRepoInput);
+      expect(mapperMock.toResponse).toHaveBeenCalledWith(mockDbResult);
+      expect(result).toEqual(mockFinalResponse);
     });
 
-    it('should return DENY response with reason', async () => {
-      repositoryService.checkSend.mockResolvedValue({
-        status: false,
-        reason: 'No available channels',
+    it('should catch repository errors and forward them to ErrorHandler with context "Person"', async () => {
+      const mockDto: any = { personId: '123' };
+      const dbError = new Error('Database connection timeout');
+
+      repositoryMock.checkSend.mockRejectedValue(dbError);
+
+      // Имитируем поведение ErrorHandler, который прерывает выполнение исключением NestJS
+      errorHandlerMock.handle.mockImplementation(() => {
+        throw new InternalServerErrorException();
       });
 
-      const result = await service.checkSend(dto);
+      await expect(service.checkSend(mockDto)).rejects.toBeInstanceOf(InternalServerErrorException);
 
-      expect(result).toEqual({
-        status: ResponseStatus.DENY,
-        details: 'No available channels',
-        data: undefined,
-      });
-    });
-
-    it('should map dto to repository payload', async () => {
-      repositoryService.checkSend.mockResolvedValue({
-        status: true,
-        channelIds: ['channel-1'],
-      });
-
-      await service.checkSend(dto);
-
-      expect(repositoryService.checkSend).toHaveBeenCalledTimes(1);
-
-      const payload = repositoryService.checkSend.mock.calls[0][0];
-
-      expect(payload).toMatchObject({
-        personId: dto.personId,
-        notificationType: dto.notificationType,
-        channelType: dto.channelType,
-        regionCode: dto.regionCode,
-      });
-
-      expect(payload.datetime).toBeInstanceOf(DateTimestamp);
-
-      expect(payload.datetime.format()).toBe('2026-05-21T21:30:00+00:00');
-    });
-
-    it('should work without regionCode', async () => {
-      repositoryService.checkSend.mockResolvedValue({
-        status: true,
-        channelIds: ['channel-1'],
-      });
-
-      const result = await service.checkSend({
-        ...dto,
-        regionCode: undefined,
-      });
-
-      expect(result.status).toBe(ResponseStatus.ALLOW);
-
-      const payload = repositoryService.checkSend.mock.calls[0][0];
-
-      expect(payload.regionCode).toBeUndefined();
-    });
-
-    it('should throw InternalServerErrorException on repository error', async () => {
-      repositoryService.checkSend.mockRejectedValue(new Error('Database failed'));
-
-      await expect(service.checkSend(dto)).rejects.toThrow(InternalServerErrorException);
-    });
-
-    it('should throw formatted InternalServerErrorException', async () => {
-      repositoryService.checkSend.mockRejectedValue(new Error('Database failed'));
-
-      try {
-        await service.checkSend(dto);
-      } catch (error: any) {
-        expect(error.response).toEqual({
-          status: ResponseStatus.ERROR,
-          details: 'Internal database error.',
-        });
-      }
-    });
-
-    it('should create DateTimestamp from dto datetime', async () => {
-      repositoryService.checkSend.mockResolvedValue({
-        status: true,
-        channelIds: ['channel-1'],
-      });
-
-      await service.checkSend(dto);
-
-      const payload = repositoryService.checkSend.mock.calls[0][0];
-
-      expect(payload.datetime.getTimestamp()).toBe(new Date('2026-05-21T21:30:00Z').getTime());
+      // Самая важная проверка: что ошибка ушла в хэндлер со строкой контекста 'Person'
+      expect(errorHandlerMock.handle).toHaveBeenCalledWith(dbError, 'Person');
     });
   });
 });

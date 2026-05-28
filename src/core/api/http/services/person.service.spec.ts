@@ -1,24 +1,30 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { Test, TestingModule } from '@nestjs/testing';
 import { InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { PersonService as RepositoryService } from 'src/core/repositories/postgres';
 import { ResponseStatus } from '../dto/base.dto';
 import { PersonService } from './person.service';
+import { PersonDtoMapper } from '../mappers/person.dto-mapper';
+import { ErrorHandler } from '../handlers/error.handler';
 
-jest.mock('src/core/app/helpers/datetime.helper', () => ({
-  DatetimeHelper: {
-    minutesToTime: jest.fn((v: number) => `T${v}`),
-  },
-}));
-
-describe('PersonService (API layer)', () => {
+describe('PersonService', () => {
   let service: PersonService;
 
+  // Изолированные моки зависимостей
   const repositoryMock = {
     info: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+  };
+
+  const mapperMock = {
+    toResponse: jest.fn(),
+    toPerson: jest.fn(),
+    toChannels: jest.fn(),
+  };
+
+  const errorHandlerMock = {
+    handle: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -31,154 +37,123 @@ describe('PersonService (API layer)', () => {
           provide: RepositoryService,
           useValue: repositoryMock,
         },
+        {
+          provide: PersonDtoMapper,
+          useValue: mapperMock,
+        },
+        {
+          provide: ErrorHandler,
+          useValue: errorHandlerMock,
+        },
       ],
     }).compile();
 
-    service = module.get(PersonService);
+    service = module.get<PersonService>(PersonService);
   });
 
   describe('info', () => {
-    it('should return mapped response', async () => {
-      repositoryMock.info.mockResolvedValue({
-        id: '1',
-        middleName: null,
-        channels: [
-          {
-            id: 'c1',
-            label: null,
-            settings: [
-              {
-                quietRanges: {
-                  quietStart: 10,
-                  quietFinish: 20,
-                },
-              },
-            ],
-          },
-        ],
-      });
+    it('should return mapped response successfully', async () => {
+      const mockDbData = { id: 'uuid-1', firstName: 'John', channels: [] };
+      const mockMappedResponse = {
+        status: ResponseStatus.SUCCESS,
+        data: { id: 'uuid-1', channels: [] },
+      };
 
-      const result = await service.info('1');
+      repositoryMock.info.mockResolvedValue(mockDbData);
+      mapperMock.toResponse.mockReturnValue(mockMappedResponse);
 
-      expect(repositoryMock.info).toHaveBeenCalledWith('1');
-      expect(result.status).toBe(ResponseStatus.SUCCESS);
-      expect(result.data?.id).toBe('1');
-      expect(result.data?.channels[0]?.settings[0]?.quietRanges).toEqual({
-        quietStart: 'T10',
-        quietFinish: 'T20',
-      });
+      const result = await service.info('uuid-1');
+
+      expect(repositoryMock.info).toHaveBeenCalledWith('uuid-1');
+      expect(mapperMock.toResponse).toHaveBeenCalledWith(mockDbData);
+      expect(result).toEqual(mockMappedResponse);
     });
 
-    it('should throw BadRequestException on unique constraint', async () => {
-      repositoryMock.info.mockRejectedValue({
-        name: 'SequelizeUniqueConstraintError',
+    it('should pass error and context to ErrorHandler on repository failure', async () => {
+      const dbError = new Error('DB connection failed');
+      repositoryMock.info.mockRejectedValue(dbError);
+
+      errorHandlerMock.handle.mockImplementation(() => {
+        throw new InternalServerErrorException();
       });
 
-      await expect(service.info('1')).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('should throw InternalServerErrorException on unknown error', async () => {
-      repositoryMock.info.mockRejectedValue(new Error('DB crash'));
-
-      await expect(service.info('1')).rejects.toBeInstanceOf(InternalServerErrorException);
+      await expect(service.info('uuid-1')).rejects.toBeInstanceOf(InternalServerErrorException);
+      expect(errorHandlerMock.handle).toHaveBeenCalledWith(dbError, 'Person');
     });
   });
 
   describe('create', () => {
-    it('should call repository and return mapped response', async () => {
-      repositoryMock.create.mockResolvedValue({
-        id: '1',
-        channels: [],
-      });
-
-      const dto: any = {
-        name: 'John',
-        channels: [],
+    it('should transform inputs, save via repository and return mapped response', async () => {
+      const dto: any = { name: 'Alice', channels: [] };
+      const mockPersonEntity = { firstName: 'Alice' };
+      const mockChannelsEntity: any[] = [];
+      const mockDbData = { id: 'uuid-2', firstName: 'Alice', channels: [] };
+      const mockFinalResponse = {
+        status: ResponseStatus.SUCCESS,
+        data: { id: 'uuid-2', firstName: 'Alice', channels: [] },
       };
+
+      mapperMock.toPerson.mockReturnValue(mockPersonEntity);
+      mapperMock.toChannels.mockReturnValue(mockChannelsEntity);
+      repositoryMock.create.mockResolvedValue(mockDbData);
+      mapperMock.toResponse.mockReturnValue(mockFinalResponse);
 
       const result = await service.create(dto);
 
-      expect(repositoryMock.create).toHaveBeenCalled();
-      expect(result.status).toBe(ResponseStatus.SUCCESS);
-      expect(result.data?.id).toBe('1');
+      expect(mapperMock.toPerson).toHaveBeenCalledWith(dto);
+      expect(mapperMock.toChannels).toHaveBeenCalledWith(dto);
+      expect(repositoryMock.create).toHaveBeenCalledWith(mockPersonEntity, mockChannelsEntity);
+      expect(mapperMock.toResponse).toHaveBeenCalledWith(mockDbData);
+      expect(result).toEqual(mockFinalResponse);
     });
 
-    it('should map DTO to repository input (channels)', async () => {
-      repositoryMock.create.mockResolvedValue({
-        id: '1',
-        channels: [],
+    it('should pass error and context to ErrorHandler on creation failure', async () => {
+      const dto: any = { name: 'Alice' };
+      const uniqueError = { name: 'SequelizeUniqueConstraintError' };
+
+      repositoryMock.create.mockRejectedValue(uniqueError);
+      errorHandlerMock.handle.mockImplementation(() => {
+        throw new BadRequestException();
       });
 
-      const dto: any = {
-        name: 'John',
-        channels: [
-          {
-            type: 'EMAIL',
-            value: 'test@mail.com',
-            settings: [
-              {
-                type: 'system',
-                quietRanges: { quietStart: 10, quietFinish: 20 },
-              },
-            ],
-          },
-        ],
-      };
-
-      await service.create(dto);
-
-      expect(repositoryMock.create).toHaveBeenCalledWith(expect.any(Object), expect.any(Array));
+      await expect(service.create(dto)).rejects.toBeInstanceOf(BadRequestException);
+      expect(errorHandlerMock.handle).toHaveBeenCalledWith(uniqueError, 'Person');
     });
   });
 
   describe('update', () => {
-    it('should return success response with data', async () => {
-      repositoryMock.update.mockResolvedValue({
-        id: '1',
-        channels: [],
-      });
+    it('should transform inputs, update via repository and return inline success response', async () => {
+      const dto: any = { id: 'uuid-3', name: 'Bob', channels: [] };
+      const mockPersonEntity = { firstName: 'Bob' };
+      const mockChannelsEntity: any[] = [];
+      const mockDbData = { id: 'uuid-3', firstName: 'Bob', channels: [] };
 
-      const dto: any = {
-        id: '1',
-        name: 'Updated',
-        channels: [],
-      };
+      mapperMock.toPerson.mockReturnValue(mockPersonEntity);
+      mapperMock.toChannels.mockReturnValue(mockChannelsEntity);
+      repositoryMock.update.mockResolvedValue(mockDbData);
 
       const result = await service.update(dto);
 
-      expect(repositoryMock.update).toHaveBeenCalledWith('1', expect.any(Object), expect.any(Array));
-
-      expect(result.status).toBe(ResponseStatus.SUCCESS);
-      expect(result.data?.id).toBe('1');
+      expect(mapperMock.toPerson).toHaveBeenCalledWith(dto);
+      expect(mapperMock.toChannels).toHaveBeenCalledWith(dto);
+      expect(repositoryMock.update).toHaveBeenCalledWith('uuid-3', mockPersonEntity, mockChannelsEntity);
+      expect(result).toEqual({
+        status: ResponseStatus.SUCCESS,
+        data: mockDbData,
+      });
     });
 
-    it('should throw BadRequestException on unique constraint', async () => {
-      repositoryMock.update.mockRejectedValue({
-        name: 'SequelizeUniqueConstraintError',
+    it('should pass error and context to ErrorHandler on update failure', async () => {
+      const dto: any = { id: 'uuid-3' };
+      const runtimeError = new TypeError('Cannot read property of undefined');
+
+      repositoryMock.update.mockRejectedValue(runtimeError);
+      errorHandlerMock.handle.mockImplementation(() => {
+        throw new InternalServerErrorException();
       });
 
-      await expect(service.update({ id: '1' } as any)).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('should throw InternalServerErrorException on unknown error', async () => {
-      repositoryMock.update.mockRejectedValue(new Error('DB fail'));
-
-      await expect(service.update({ id: '1' } as any)).rejects.toBeInstanceOf(InternalServerErrorException);
-    });
-  });
-
-  describe('mapResponse edge cases via info', () => {
-    it('should handle null fields correctly', async () => {
-      repositoryMock.info.mockResolvedValue({
-        id: null,
-        middleName: null,
-        channels: [],
-      });
-
-      const result = await service.info('1');
-
-      expect(result.data?.id).toBeUndefined();
-      expect(result.data?.middleName).toBeUndefined();
+      await expect(service.update(dto)).rejects.toBeInstanceOf(InternalServerErrorException);
+      expect(errorHandlerMock.handle).toHaveBeenCalledWith(runtimeError, 'Person');
     });
   });
 });
