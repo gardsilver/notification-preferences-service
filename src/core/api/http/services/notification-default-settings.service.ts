@@ -10,7 +10,7 @@ import {
   UpdateNotificationDefaultSettingsRequestDto,
 } from '../dto/notification-default-settings.dto';
 import { ErrorHandler } from '../handlers/error.handler';
-import { NotificationDefaultSettingsDtoMapper } from '../mappers/notification-default-settings.dto.mapper';
+import { NotificationDefaultSettingsDtoMapper } from '../mappers/notification-default-settings.dto-mapper';
 
 @Injectable()
 export class NotificationDefaultSettingsService {
