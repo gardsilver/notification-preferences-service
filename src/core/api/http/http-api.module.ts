@@ -11,7 +11,7 @@ import { HttpApiPersonNotificationController } from './controllers/person-notifi
 import { ErrorHandler } from './handlers/error.handler';
 import { PersonDtoMapper } from './mappers/person.dto-mapper';
 import { PersonNotificationDtoMapper } from './mappers/person-notification.dto-mapper';
-import { NotificationDefaultSettingsDtoMapper } from './mappers/notification-default-settings.dto.mapper';
+import { NotificationDefaultSettingsDtoMapper } from './mappers/notification-default-settings.dto-mapper';
 
 @Module({
   imports: [PostgresModule, CommonApiModule],

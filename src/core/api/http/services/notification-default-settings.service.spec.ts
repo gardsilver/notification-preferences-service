@@ -4,7 +4,7 @@ import { BadRequestException, InternalServerErrorException } from '@nestjs/commo
 import { NotificationDefaultSettingsService as RepositoryService } from 'src/core/repositories/postgres';
 import { ResponseStatus } from '../dto/base.dto';
 import { NotificationDefaultSettingsService } from './notification-default-settings.service';
-import { NotificationDefaultSettingsDtoMapper } from '../mappers/notification-default-settings.dto.mapper';
+import { NotificationDefaultSettingsDtoMapper } from '../mappers/notification-default-settings.dto-mapper';
 import { ErrorHandler } from '../handlers/error.handler';
 
 describe('NotificationDefaultSettingsService', () => {
