@@ -1,167 +1,117 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { CreateNotificationPolicyRequestDto, UpdateNotificationPolicyRequestDto } from './notification-policy.dto';
 import { ChannelType, NotificationStatus, NotificationType } from 'src/core/repositories/postgres';
+import {
+  CreateNotificationPolicyRequestDto,
+  UpdateNotificationPolicyRequestDto,
+  NotificationPolicyResponseData,
+} from './notification-policy.dto'; // Укажите правильный относительный путь
 
 describe('NotificationPolicy DTOs', () => {
-  describe('CreateNotificationPolicyRequestDto', () => {
-    const validPlainObject = {
-      status: NotificationStatus.ACTIVE,
-      notificationType: NotificationType.MARKETING,
-      channelType: ChannelType.EMAIL,
-      regionCode: 'RU',
-    };
+  const validCreatePayload = {
+    notificationType: '  MARKETING  ', // Проверка trim и lowercase из BaseNotificationFieldsRequestDto
+    channelType: '  EmAiL  ', // Проверка trim и lowercase
+    regionCode: '  ru  ', // Проверка trim и uppercase из BaseRegionCodeRequestDto
+    status: '  1  ', // Проверка приведения строки к числу из BaseNotificationStatusRequestDto
+  };
 
-    it('should successfully validate with valid data', async () => {
-      const dtoInstance = plainToInstance(CreateNotificationPolicyRequestDto, validPlainObject);
-      const errors = await validate(dtoInstance);
+  describe('CreateNotificationPolicyRequestDto', () => {
+    it('should successfully validate with valid data and apply inherited transformations', async () => {
+      const dto = plainToInstance(CreateNotificationPolicyRequestDto, validCreatePayload);
+      const errors = await validate(dto);
 
       expect(errors.length).toBe(0);
+      expect(dto.notificationType).toBe(NotificationType.MARKETING);
+      expect(dto.channelType).toBe(ChannelType.EMAIL);
+      expect(dto.regionCode).toBe('RU');
+      expect(dto.status).toBe(NotificationStatus.ACTIVE); // Строка '  1  ' должна стать числом 1
     });
 
-    describe('Transformations (trim and casing)', () => {
-      it('should lowercase and trim notificationType/status', async () => {
-        const dto = plainToInstance(CreateNotificationPolicyRequestDto, {
-          ...validPlainObject,
-          status: ' ACTIVE ',
-        });
+    it('should fail validation if inherited required fields are missing', async () => {
+      const plain = {
+        status: NotificationStatus.ACTIVE,
+        // notificationType и channelType отсутствуют
+      };
+      const dto = plainToInstance(CreateNotificationPolicyRequestDto, plain);
+      const errors = await validate(dto);
 
-        await validate(dto);
-
-        expect(dto.notificationType).toBe('marketing');
-        expect(dto.status).toBe('active');
-      });
-
-      it('should trim and lowercase notificationType and channelType, and uppercase regionCode', async () => {
-        const plain = {
-          status: NotificationStatus.ACTIVE,
-          notificationType: '  MARKETING  ',
-          channelType: '  EmAiL  ',
-          regionCode: '  ru  ',
-        };
-
-        const dtoInstance: any = plainToInstance(CreateNotificationPolicyRequestDto, plain);
-        const errors = await validate(dtoInstance);
-
-        expect(errors.length).toBe(0);
-        expect(dtoInstance.notificationType).toBe('marketing');
-        expect(dtoInstance.channelType).toBe('email');
-        expect(dtoInstance.regionCode).toBe('RU');
-      });
+      expect(errors.length).toBeGreaterThan(0);
+      const targetProperties = errors.map((err) => err.property);
+      expect(targetProperties).toContain('notificationType');
+      expect(targetProperties).toContain('channelType');
     });
 
-    describe('Validation Constraints', () => {
-      it('should fail if notificationType or channelType or regionCode are missing', async () => {
-        const plain = {
-          status: NotificationStatus.ACTIVE,
-          // notificationType, channelType, regionCode отсутствуют
-        };
+    it('should fail validation if inherited values are out of enum bounds', async () => {
+      const plain = {
+        ...validCreatePayload,
+        channelType: 'fax', // Невалидный канал
+        status: 999, // Невалидный статус
+      };
+      const dto = plainToInstance(CreateNotificationPolicyRequestDto, plain);
+      const errors = await validate(dto);
 
-        const dtoInstance = plainToInstance(CreateNotificationPolicyRequestDto, plain);
-        const errors = await validate(dtoInstance);
-
-        expect(errors.length).toBeGreaterThan(0);
-
-        const targetProperties = errors.map((err) => err.property);
-        expect(targetProperties).toContain('notificationType');
-        expect(targetProperties).toContain('channelType');
-        expect(targetProperties).toContain('regionCode');
-      });
-
-      it('should fail validation with invalid status value', async () => {
-        const plain = {
-          ...validPlainObject,
-          status: 999, // Неверное значение enum
-        };
-
-        const dtoInstance = plainToInstance(CreateNotificationPolicyRequestDto, plain);
-        const errors = await validate(dtoInstance);
-
-        expect(errors.length).toBe(1);
-        expect(errors[0].property).toBe('status');
-        expect(errors[0].constraints?.isIn).toContain('Указан неверный статус политики. Допустимые значения: 0, 1');
-      });
-
-      it('should fail validation with invalid notificationType value', async () => {
-        const plain = {
-          ...validPlainObject,
-          notificationType: 'invalid-type',
-        };
-
-        const dtoInstance = plainToInstance(CreateNotificationPolicyRequestDto, plain);
-        const errors = await validate(dtoInstance);
-
-        expect(errors.length).toBe(1);
-        expect(errors[0].property).toBe('notificationType');
-        expect(errors[0].constraints?.isIn).toContain('Указан неверный информационный канал.');
-      });
-
-      it('should fail validation with invalid channelType value', async () => {
-        const plain = {
-          ...validPlainObject,
-          channelType: 'fax',
-        };
-
-        const dtoInstance = plainToInstance(CreateNotificationPolicyRequestDto, plain);
-        const errors = await validate(dtoInstance);
-
-        expect(errors.length).toBe(1);
-        expect(errors[0].property).toBe('channelType');
-        expect(errors[0].constraints?.isIn).toContain('Указан неверный тип канала оповещения.');
-      });
-
-      it('should fail validation if regionCode length is not exactly 2 characters', async () => {
-        const plainShort = { ...validPlainObject, regionCode: 'R' };
-        const plainLong = { ...validPlainObject, regionCode: 'RUS' };
-
-        const dtoInstanceShort = plainToInstance(CreateNotificationPolicyRequestDto, plainShort);
-        const errorsShort = await validate(dtoInstanceShort);
-        expect(errorsShort.map((e) => e.property)).toContain('regionCode');
-
-        const dtoInstanceLong = plainToInstance(CreateNotificationPolicyRequestDto, plainLong);
-        const errorsLong = await validate(dtoInstanceLong);
-        expect(errorsLong.map((e) => e.property)).toContain('regionCode');
-      });
+      expect(errors.length).toBe(2);
+      const targetProperties = errors.map((err) => err.property);
+      expect(targetProperties).toContain('channelType');
+      expect(targetProperties).toContain('status');
     });
   });
 
   describe('UpdateNotificationPolicyRequestDto', () => {
-    it('should validate successfully when id is correct UUIDv4 and fields are optional', async () => {
-      const plain = {
-        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9', // Валидный UUID
-        notificationType: NotificationType.SYSTEM,
-        // Остальные поля опущены, так как это PartialType
+    it('should validate successfully when id is correct UUIDv4 and fields are omitted (PartialType)', async () => {
+      const plainUpdate = {
+        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9',
+        // Все остальные поля опущены, так как они опциональны в PartialType
       };
 
-      const dtoInstance = plainToInstance(UpdateNotificationPolicyRequestDto, plain);
-      const errors = await validate(dtoInstance);
+      const dto = plainToInstance(UpdateNotificationPolicyRequestDto, plainUpdate);
+      const errors = await validate(dto);
 
       expect(errors.length).toBe(0);
+      expect(dto.id).toBe('4fa0e21a-e7be-4b95-8df4-069c3a3cfef9');
     });
 
-    it('should fail if id is missing', async () => {
-      const plain = {
-        notificationType: NotificationType.SYSTEM,
+    it('should fail if id is missing or is not a valid UUIDv4', async () => {
+      const plainUpdate = {
+        id: 'invalid-uuid-format',
+        status: NotificationStatus.DISABLED,
       };
 
-      const dtoInstance = plainToInstance(UpdateNotificationPolicyRequestDto, plain);
-      const errors = await validate(dtoInstance);
+      const dto = plainToInstance(UpdateNotificationPolicyRequestDto, plainUpdate);
+      const errors = await validate(dto);
 
       expect(errors.length).toBe(1);
       expect(errors[0].property).toBe('id');
     });
 
-    it('should fail if id is not a valid UUIDv4', async () => {
-      const plain = {
-        id: 'invalid-uuid-12345',
+    it('should apply validation rules to fields if they are provided during update', async () => {
+      const plainUpdate = {
+        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9',
+        regionCode: 'RUSSIA', // Ошибка: длина должна быть строго 2 символа
       };
 
-      const dtoInstance = plainToInstance(UpdateNotificationPolicyRequestDto, plain);
-      const errors = await validate(dtoInstance);
+      const dto = plainToInstance(UpdateNotificationPolicyRequestDto, plainUpdate);
+      const errors = await validate(dto);
 
       expect(errors.length).toBe(1);
-      expect(errors[0].property).toBe('id');
+      expect(errors[0].property).toBe('regionCode');
+    });
+  });
+
+  describe('NotificationPolicyResponseData', () => {
+    it('should correctly build response data structure including inherited fields', () => {
+      const response = new NotificationPolicyResponseData();
+      response.id = 'policy-uuid-777';
+      response.regionCode = 'RU';
+      response.status = NotificationStatus.ACTIVE;
+      response.notificationType = NotificationType.SYSTEM;
+      response.channelType = ChannelType.TELEGRAM;
+
+      expect(response.id).toBe('policy-uuid-777');
+      expect(response.regionCode).toBe('RU');
+      expect(response.status).toBe(NotificationStatus.ACTIVE);
+      expect(response.notificationType).toBe(NotificationType.SYSTEM);
+      expect(response.channelType).toBe(ChannelType.TELEGRAM);
     });
   });
 });

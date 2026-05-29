@@ -1,28 +1,21 @@
-import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsString,
-  IsIn,
-  IsNotEmpty,
-  IsOptional,
-  IsBoolean,
-  IsArray,
-  IsUUID,
-  ValidateNested,
-  ValidateIf,
-} from 'class-validator';
+import { ApiProperty, PartialType, OmitType, IntersectionType } from '@nestjs/swagger';
+import { IsString, IsIn, IsNotEmpty, IsOptional, IsBoolean, IsArray, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { enumValues } from 'src/modules/common/utils';
 import { ChannelType, PersonChannelStatus } from 'src/core/repositories/postgres';
 import { IsChannelValue } from '../validators/person-channel.validator';
-import { ChannelSettingsRequestData, ChannelSettingsResponseData } from './person-channel-settings.dto';
+import {
+  ChannelSettingsRequestData,
+  ChannelSettingsResponseData,
+  UpdateChannelSettingsRequestData,
+} from './person-channel-settings.dto';
+import { allowedChannelStatus, allowedChannelTypes, BaseIdRequestDto, BaseIdResponseDto } from './base.dto';
 
-const allowedPersonChannelTypes = enumValues(ChannelType);
-const allowedPersonChannelStatus = enumValues(PersonChannelStatus);
-
-// Create Request
+// ==========================================
+// Create RequestDto
+// ==========================================
 
 export class CreatePersonChannelRequestDto {
-  @ApiProperty({ type: String, description: 'Метка канала оповещения', example: 'Рабочий' })
+  @ApiProperty({ type: String, description: 'Метка канала оповещения', example: 'Рабочий', required: false })
   @IsOptional()
   @IsString()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -36,11 +29,14 @@ export class CreatePersonChannelRequestDto {
   })
   @IsNotEmpty()
   @Transform(({ value }) => {
-    if (typeof value === 'string') return value.trim().toLowerCase();
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed === '' ? undefined : Number(trimmed);
+    }
     return value;
   })
-  @IsIn(allowedPersonChannelStatus, {
-    message: `Указан неверный статус канала оповещения. Допустимые значения: ${allowedPersonChannelStatus.join(', ')}`,
+  @IsIn(allowedChannelStatus, {
+    message: `Указан неверный статус канала оповещения. Допустимые значения: ${allowedChannelStatus.join(', ')}`,
   })
   status!: PersonChannelStatus;
 
@@ -67,8 +63,8 @@ export class CreatePersonChannelRequestDto {
   })
   @IsNotEmpty()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
-  @IsIn(allowedPersonChannelTypes, {
-    message: `Указан неверный тип канала оповещения. Допустимые значения: ${allowedPersonChannelTypes.join(', ')}`,
+  @IsIn(allowedChannelTypes, {
+    message: `Указан неверный тип канала оповещения. Допустимые значения: ${allowedChannelTypes.join(', ')}`,
   })
   type!: ChannelType;
 
@@ -85,109 +81,43 @@ export class CreatePersonChannelRequestDto {
   value!: string;
 
   @ApiProperty({
-    description: 'Типы уведомлений, привязанные к этому каналу',
+    description: 'Типы уведомлений, привязанные к этому канале',
     type: [ChannelSettingsRequestData],
+    required: false,
   })
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ChannelSettingsRequestData)
   settings?: ChannelSettingsRequestData[];
 }
 
-// Update Request
+// ==========================================
+// Update RequestDto
+// ==========================================
 
-export class UpdatePersonChannelRequestData {
-  @ApiProperty({
-    type: String,
-    description: 'ID (UUID)',
-    example: '00000000-0000-0000-0000-000000000000',
-  })
-  @IsString()
-  @IsOptional()
-  @IsUUID()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  id?: string;
-
-  @ApiProperty({ type: String, description: 'Метка канала оповещения', example: 'Рабочий' })
-  @IsOptional()
-  @IsString()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  label?: string;
-
-  @ApiProperty({
-    description: 'Статус канала оповещения',
-    enum: PersonChannelStatus,
-    example: PersonChannelStatus.ACTIVE,
-  })
-  @IsOptional()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') return value.trim().toLowerCase();
-    return value;
-  })
-  @IsIn(allowedPersonChannelStatus, {
-    message: `Указан неверный статус канала оповещения. Допустимые значения: ${allowedPersonChannelStatus.join(', ')}`,
-  })
-  status?: PersonChannelStatus;
-
-  @ApiProperty({
-    description: 'Признак верификации канала оповещения',
-    type: Boolean,
-    example: true,
-  })
-  @IsOptional()
-  @IsBoolean({ message: 'isVerified должно быть логическим значением (true/false)' })
-  @Transform(({ value }) => {
-    if (value === 'true' || value === true) return true;
-    if (value === 'false' || value === false) return false;
-    return value;
-  })
-  isVerified?: boolean;
-
-  @ApiProperty({
-    description: 'Тип канала оповещения',
-    enum: ChannelType,
-    example: ChannelType.EMAIL,
-  })
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
-  @IsIn(allowedPersonChannelTypes, {
-    message: `Указан неверный тип канала оповещения. Допустимые значения: ${allowedPersonChannelTypes.join(', ')}`,
-  })
-  type?: ChannelType;
-
-  @ApiProperty({
-    type: String,
-    description: 'Адресат канала оповещения',
-    example: 'user@example.com',
-  })
-  @IsOptional()
-  @IsString()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
-  @IsChannelValue()
-  value?: string;
-
+export class UpdatePersonChannelRequestData extends IntersectionType(
+  PartialType(BaseIdRequestDto),
+  PartialType(OmitType(CreatePersonChannelRequestDto, ['settings'] as const)),
+) {
+  // 3. Подмешиваем массив настроек с типом для обновления (Update) вместо создания (Create)
   @ApiProperty({
     description: 'Типы уведомлений, привязанные к этому каналу',
-    type: [ChannelSettingsRequestData],
+    type: [UpdateChannelSettingsRequestData],
+    required: false,
   })
   @IsOptional()
-  @ValidateIf((o, v) => Array.isArray(v))
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ChannelSettingsRequestData)
-  settings?: ChannelSettingsRequestData[];
+  @Type(() => UpdateChannelSettingsRequestData)
+  settings?: UpdateChannelSettingsRequestData[];
 }
 
-// Response
+// ==========================================
+// ResponseData
+// ==========================================
 
-export class PersonChannelResponseData {
-  @ApiProperty({
-    type: String,
-    description: 'ID (UUID)',
-    example: '00000000-0000-0000-0000-000000000000',
-  })
-  id?: string;
-
+export class PersonChannelResponseData extends BaseIdResponseDto {
   @ApiProperty({ type: String, description: 'Метка канала оповещения', example: 'Рабочий' })
   label?: string;
 
@@ -217,7 +147,7 @@ export class PersonChannelResponseData {
 
   @ApiProperty({
     description: 'Типы уведомлений, привязанные к этому каналу',
-    type: ChannelSettingsResponseData,
+    type: [ChannelSettingsResponseData],
   })
   settings!: ChannelSettingsResponseData[];
 }

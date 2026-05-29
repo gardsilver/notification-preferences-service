@@ -27,8 +27,10 @@ describe('NotificationDefaultSettingsDtoMapper', () => {
     it('should map type and include quietRanges if both quietStart and quietFinish are defined', () => {
       const mockDto: any = {
         type: 'PUSH',
-        quietStart: 60,
-        quietFinish: 180,
+        quietRanges: {
+          quietStart: 60,
+          quietFinish: 180,
+        },
       };
 
       const result = mapper.toRepositoryInput(mockDto);
@@ -42,11 +44,10 @@ describe('NotificationDefaultSettingsDtoMapper', () => {
       });
     });
 
-    it('should not include quietRanges if quietStart or quietFinish are missing', () => {
+    it('should not include quietRanges', () => {
       const mockDto: any = {
         type: 'EMAIL',
-        quietStart: 60,
-        // quietFinish отсутствует
+        // quietRanges отсутствует
       };
 
       const result = mapper.toRepositoryInput(mockDto);
@@ -77,9 +78,10 @@ describe('NotificationDefaultSettingsDtoMapper', () => {
         data: {
           id: 'settings-uuid',
           type: 'SMS',
-          quietStart: '01:00',
-          quietFinish: '03:00',
-          quietRanges: undefined,
+          quietRanges: {
+            quietStart: '01:00',
+            quietFinish: '03:00',
+          },
         },
       });
 
@@ -104,8 +106,8 @@ describe('NotificationDefaultSettingsDtoMapper', () => {
       const result = mapper.toResponse(mockSettings);
 
       expect(result?.data?.id).toBe('');
-      expect(result?.data?.quietStart).toBe('00');
-      expect(result?.data?.quietFinish).toBe('00');
+      expect(result?.data?.quietRanges?.quietStart).toBe('00');
+      expect(result?.data?.quietRanges?.quietFinish).toBe('00');
     });
   });
 });

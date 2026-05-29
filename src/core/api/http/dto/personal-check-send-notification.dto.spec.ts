@@ -1,127 +1,99 @@
-import 'reflect-metadata';
-import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { PersonalCheckSendNotificationRequestDto } from './personal-check-send-notification.dto';
+import { plainToInstance } from 'class-transformer';
+import {
+  PersonalCheckSendNotificationRequestDto,
+  PersonalCheckSendNotificationResponseData,
+} from './personal-check-send-notification.dto'; // Укажите правильный относительный путь
 import { ChannelType, NotificationType } from 'src/core/repositories/postgres';
 
-describe('PersonalCheckSendNotification', () => {
+describe('PersonalCheckSendNotification DTOs', () => {
   const validPayload = {
-    personId: '00000000-0000-0000-0000-000000000000',
-    notificationType: 'marketing',
-    channelType: 'email',
-    regionCode: 'ru',
-    datetime: '2026-05-21T21:30:00Z',
+    personId: '  4fa0e21a-e7be-4b95-8df4-069c3a3cfef9  ', // Проверяем trim()
+    notificationType: '  MARKETING  ', // Из базового BaseNotificationFieldsRequestDto
+    channelType: '  EmAiL  ', // Из базового BaseNotificationFieldsRequestDto
+    regionCode: '  ru  ', // Из базового BaseNotificationFieldsRequestDto
+    datetime: '  2026-05-21 21:30:00  ', // Небрежная дата для проверки приведения к ISO
   };
 
-  it('should validate correct payload', async () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, validPayload);
+  describe('PersonalCheckSendNotificationRequestDto', () => {
+    it('should successfully validate with valid data and apply all transformations', async () => {
+      const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, validPayload);
+      const errors = await validate(dto);
 
-    const errors = await validate(dto);
+      expect(errors.length).toBe(0);
+      expect(dto.personId).toBe('4fa0e21a-e7be-4b95-8df4-069c3a3cfef9');
+      expect(dto.notificationType).toBe(NotificationType.MARKETING);
+      expect(dto.channelType).toBe(ChannelType.EMAIL);
+      expect(dto.regionCode).toBe('RU');
 
-    expect(errors).toHaveLength(0);
-  });
-
-  it('should transform datetime to ISO string', async () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      datetime: '2026-05-21T21:30:00.000Z',
+      // Проверяем работу трансформера datetime (должен преобразовать в ISO UTC)
+      expect(dto.datetime).toBe(new Date('2026-05-21 21:30:00').toISOString());
     });
 
-    expect(dto.datetime).toBe('2026-05-21T21:30:00.000Z');
-  });
+    it('should return value as-is inside datetime transformer if input is not a string', async () => {
+      const plain = {
+        ...validPayload,
+        datetime: 123456789, // Передаем число вместо строки
+      };
 
-  it('should fail for invalid datetime', async () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      datetime: 'invalid-date',
+      const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, plain);
+      const errors = await validate(dto);
+
+      expect(dto.datetime).toBe(123456789);
+      expect(errors.length).toBeGreaterThan(0); // Должно упасть на @IsString
     });
 
-    const errors = await validate(dto);
+    it('should return trimmed text inside datetime transformer if date is completely invalid', async () => {
+      const plain = {
+        ...validPayload,
+        datetime: '  completely-invalid-date-string  ',
+      };
 
-    expect(errors).not.toHaveLength(0);
+      const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, plain);
+      const errors = await validate(dto);
 
-    const datetimeError = errors.find((e) => e.property === 'datetime');
-
-    expect(datetimeError?.constraints?.isDateString).toBeDefined();
-  });
-
-  it('should trim and lowercase notificationType', () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      notificationType: ' SYSTEM ',
+      expect(dto.datetime).toBe('completely-invalid-date-string'); // Должен вернуть строку без изменений (но с trim)
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('datetime');
+      expect(errors[0].constraints?.isDateString).toContain('datetime должен быть валидной UTC ISO датой');
     });
 
-    expect(dto.notificationType).toBe(NotificationType.SYSTEM);
-  });
+    it('should fail validation if mandatory fields are missing', async () => {
+      const plain = {
+        regionCode: 'RU',
+      };
 
-  it('should trim and lowercase channelType', () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      channelType: ' EMAIL ',
+      const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, plain);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBeGreaterThan(0);
+      const targetProperties = errors.map((err) => err.property);
+      expect(targetProperties).toContain('personId');
+      expect(targetProperties).toContain('notificationType');
+      expect(targetProperties).toContain('channelType');
+      expect(targetProperties).toContain('datetime');
     });
 
-    expect(dto.channelType).toBe(ChannelType.EMAIL);
+    it('should fail validation if personId is not a valid UUIDv4', async () => {
+      const plain = {
+        ...validPayload,
+        personId: 'not-a-valid-uuid',
+      };
+
+      const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, plain);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('personId');
+    });
   });
 
-  it('should trim and uppercase regionCode', () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      regionCode: ' ru ',
+  describe('PersonalCheckSendNotificationResponseData', () => {
+    it('should correctly build response data structure', () => {
+      const response = new PersonalCheckSendNotificationResponseData();
+      response.channelIds = ['ch-uuid-1', 'ch-uuid-2'];
+
+      expect(response.channelIds).toEqual(['ch-uuid-1', 'ch-uuid-2']);
     });
-
-    expect(dto.regionCode).toBe('RU');
-  });
-
-  it('should trim personId', () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      personId: ' 00000000-0000-0000-0000-000000000000 ',
-    });
-
-    expect(dto.personId).toBe('00000000-0000-0000-0000-000000000000');
-  });
-
-  it('should fail for invalid UUID', async () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      personId: 'invalid-uuid',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.some((e) => e.property === 'personId')).toBe(true);
-  });
-
-  it('should fail for invalid notificationType', async () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      notificationType: 'invalid',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.some((e) => e.property === 'notificationType')).toBe(true);
-  });
-
-  it('should fail for invalid channelType', async () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      channelType: 'invalid',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.some((e) => e.property === 'channelType')).toBe(true);
-  });
-
-  it('should fail for invalid regionCode length', async () => {
-    const dto = plainToInstance(PersonalCheckSendNotificationRequestDto, {
-      ...validPayload,
-      regionCode: 'RUS',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.some((e) => e.property === 'regionCode')).toBe(true);
   });
 });
