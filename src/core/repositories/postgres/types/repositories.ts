@@ -5,6 +5,7 @@ import { PersonChannelModel } from '../entities/person-channel.model';
 import { PersonChannelNotificationSettingsModel } from '../entities/person-channel-notification-settings.model';
 import { ApiIdempotencyModel } from '../entities/api-idempotency.model';
 import { NotificationDefaultSettingsModel } from '../entities/notification-default-settings.model';
+import { NotificationPolicyModel } from '../entities/notification-policy.model';
 
 export const REPOSITORIES: Provider[] = [
   {
@@ -26,5 +27,9 @@ export const REPOSITORIES: Provider[] = [
   {
     provide: getModelToken(NotificationDefaultSettingsModel),
     useValue: NotificationDefaultSettingsModel,
+  },
+  {
+    provide: getModelToken(NotificationPolicyModel),
+    useValue: NotificationPolicyModel,
   },
 ];
