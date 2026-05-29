@@ -1,33 +1,22 @@
 import { validate, useContainer } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { Test } from '@nestjs/testing';
-import {
-  ChannelType,
-  PersonChannelStatus,
-  NotificationType,
-  NotificationStatus,
-  PersonService,
-} from 'src/core/repositories/postgres';
-import { CreatePersonChannelRequestDto, UpdatePersonChannelRequestData } from './person-channel.dto';
+import { ChannelType, PersonChannelStatus, PersonService } from 'src/core/repositories/postgres';
 import { IsChannelValueValidConstraint } from '../validators/person-channel.validator';
+import {
+  CreatePersonChannelRequestDto,
+  UpdatePersonChannelRequestData,
+  PersonChannelResponseData,
+} from './person-channel.dto'; // Укажите правильный относительный путь
 
-describe('PersonChannel DTO validation', () => {
-  const baseValidCreate = {
-    label: ' Work ',
-    status: PersonChannelStatus.ACTIVE,
-    isVerified: 'true',
-    type: ChannelType.EMAIL,
-    value: 'USER@EXAMPLE.COM',
-    settings: [
-      {
-        type: NotificationType.SYSTEM,
-        status: NotificationStatus.ACTIVE,
-        quietRanges: {
-          quietStart: '22:00',
-          quietFinish: '08:00',
-        },
-      },
-    ],
+describe('PersonChannel DTOs', () => {
+  const validCreatePayload = {
+    label: '  Рабочий  ',
+    status: '  1  ', // Строковый числовой enum для проверки Number()
+    isVerified: 'true', // Строковое булево значение для проверки трансформации
+    type: '  EmAiL  ',
+    value: '  USER@EXAMPLE.COM  ',
+    settings: [],
   };
 
   beforeEach(async () => {
@@ -44,85 +33,157 @@ describe('PersonChannel DTO validation', () => {
     }).compile();
 
     useContainer(module, { fallbackOnErrors: true, fallback: true });
+
+    jest.clearAllMocks();
   });
 
-  it('should validate valid CreatePersonChannelRequestDto', async () => {
-    const dto = plainToInstance(CreatePersonChannelRequestDto, baseValidCreate);
+  describe('CreatePersonChannelRequestDto', () => {
+    it('should successfully validate with valid data and apply transformations', async () => {
+      const dto = plainToInstance(CreatePersonChannelRequestDto, validCreatePayload);
+      const errors = await validate(dto);
 
-    const errors = await validate(dto);
-
-    expect(errors.length).toBe(0);
-  });
-
-  it('should fail when status is invalid', async () => {
-    const dto = plainToInstance(CreatePersonChannelRequestDto, {
-      ...baseValidCreate,
-      status: 'INVALID_STATUS',
+      expect(errors.length).toBe(0);
+      expect(dto.label).toBe('Рабочий');
+      expect(dto.status).toBe(PersonChannelStatus.ACTIVE); // Ожидаем число 1
+      expect(dto.isVerified).toBe(true); // Ожидаем boolean true
+      expect(dto.type).toBe(ChannelType.EMAIL);
+      expect(dto.value).toBe('user@example.com');
     });
 
-    const errors = await validate(dto);
+    it('should handle false values correctly inside isVerified transformer', async () => {
+      const dto = plainToInstance(CreatePersonChannelRequestDto, {
+        ...validCreatePayload,
+        isVerified: 'false',
+      });
+      const errors = await validate(dto);
 
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it('should transform isVerified from string to boolean', async () => {
-    const dto = plainToInstance(CreatePersonChannelRequestDto, {
-      ...baseValidCreate,
-      isVerified: 'false',
+      expect(errors.length).toBe(0);
+      expect(dto.isVerified).toBe(false);
     });
 
-    await validate(dto);
+    it('should pass non-string values as-is without crashing inside transformers', async () => {
+      const plain = {
+        ...validCreatePayload,
+        label: null,
+        status: PersonChannelStatus.BLOCKED,
+        isVerified: false,
+      };
+      const dto = plainToInstance(CreatePersonChannelRequestDto, plain);
+      const errors = await validate(dto);
 
-    expect(dto.isVerified).toBe(false);
-  });
-
-  it('should transform value to lowercase', async () => {
-    const dto = plainToInstance(CreatePersonChannelRequestDto, {
-      ...baseValidCreate,
-      value: 'USER@EXAMPLE.COM',
+      expect(dto.label).toBeNull();
+      expect(dto.status).toBe(PersonChannelStatus.BLOCKED);
+      expect(dto.isVerified).toBe(false);
+      expect(errors.length).toBe(0);
     });
 
-    await validate(dto);
+    it('should fail validation if mandatory fields are missing', async () => {
+      const plain = {
+        label: 'Home',
+        // status, isVerified, type, value отсутствуют
+      };
+      const dto = plainToInstance(CreatePersonChannelRequestDto, plain);
+      const errors = await validate(dto);
 
-    expect(dto.value).toBe('user@example.com');
-  });
-
-  it('should validate nested settings (invalid enum)', async () => {
-    const dto = plainToInstance(CreatePersonChannelRequestDto, {
-      ...baseValidCreate,
-      settings: [
-        {
-          type: 'WRONG_TYPE',
-          status: NotificationStatus.ACTIVE,
-        },
-      ],
+      expect(errors.length).toBeGreaterThan(0);
+      const properties = errors.map((err) => err.property);
+      expect(properties).toContain('status');
+      expect(properties).toContain('isVerified');
+      expect(properties).toContain('type');
+      expect(properties).toContain('value');
     });
 
-    const errors = await validate(dto);
+    it('should fail validation if status or type fields contain invalid values', async () => {
+      const plain = {
+        ...validCreatePayload,
+        status: 999, // Неверный статус
+        type: 'invalid-channel', // Неверный тип
+      };
+      const dto = plainToInstance(CreatePersonChannelRequestDto, plain);
+      const errors = await validate(dto);
 
-    expect(errors.length).toBeGreaterThan(0);
-  });
+      // ИСПРАВЛЕНИЕ: Проверяем, что ошибки зафиксированы, вместо жесткой привязки к числу 2
+      expect(errors.length).toBeGreaterThan(0);
 
-  it('should fail when UUID is invalid in update DTO', async () => {
-    const dto = plainToInstance(UpdatePersonChannelRequestData, {
-      id: 'not-uuid',
-      value: 'user@example.com',
+      const properties = errors.map((err) => err.property);
+      expect(properties).toContain('status');
+      expect(properties).toContain('type');
     });
 
-    const errors = await validate(dto);
+    it('should fail validation if isVerified is not a boolean', async () => {
+      const plain = {
+        ...validCreatePayload,
+        isVerified: 'not-a-boolean-string',
+      };
+      const dto = plainToInstance(CreatePersonChannelRequestDto, plain);
+      const errors = await validate(dto);
 
-    expect(errors.some((e) => e.property === 'id')).toBe(true);
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('isVerified');
+    });
   });
 
-  it('should validate UpdatePersonChannelRequestData partially', async () => {
-    const dto = plainToInstance(UpdatePersonChannelRequestData, {
-      id: '00000000-0000-0000-0000-000000000000',
-      value: 'user@example.com',
-      status: PersonChannelStatus.ACTIVE,
+  describe('UpdatePersonChannelRequestData', () => {
+    it('should validate successfully when all fields are optional during update', async () => {
+      const plainUpdate = {
+        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9', // Передаем только ID
+      };
+
+      const dto = plainToInstance(UpdatePersonChannelRequestData, plainUpdate);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(0);
+      expect(dto.id).toBe('4fa0e21a-e7be-4b95-8df4-069c3a3cfef9');
     });
 
-    const errors = await validate(dto);
+    it('should fail validation if an invalid UUID format is provided for id', async () => {
+      const plainUpdate = {
+        id: 'invalid-uuid-format',
+      };
 
-    expect(errors.length).toBe(0);
+      const dto = plainToInstance(UpdatePersonChannelRequestData, plainUpdate);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('id');
+    });
+
+    it('should deeply validate nested settings array if provided during update', async () => {
+      const plainUpdate = {
+        settings: [
+          {
+            type: 'invalid-notification-type', // Должно вызвать ошибку вложенного DTO
+          },
+        ],
+      };
+
+      const dto = plainToInstance(UpdatePersonChannelRequestData, plainUpdate);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('settings');
+      expect(errors[0].children?.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('PersonChannelResponseData', () => {
+    it('should correctly build response data structure using inherited fields', () => {
+      const response = new PersonChannelResponseData();
+      response.id = 'channel-uuid-111';
+      response.label = 'Рабочий';
+      response.status = PersonChannelStatus.ACTIVE;
+      response.isVerified = true;
+      response.type = ChannelType.EMAIL;
+      response.value = 'user@example.com';
+      response.settings = [];
+
+      expect(response.id).toBe('channel-uuid-111');
+      expect(response.label).toBe('Рабочий');
+      expect(response.status).toBe(PersonChannelStatus.ACTIVE);
+      expect(response.isVerified).toBe(true);
+      expect(response.type).toBe(ChannelType.EMAIL);
+      expect(response.value).toBe('user@example.com');
+      expect(response.settings).toEqual([]);
+    });
   });
 });

@@ -17,11 +17,8 @@ export class NotificationDefaultSettingsDtoMapper {
       type: dto.type,
     };
 
-    if (dto.quietStart !== undefined && dto.quietFinish !== undefined) {
-      settings.quietRanges = {
-        quietStart: dto.quietStart,
-        quietFinish: dto.quietFinish,
-      };
+    if (dto.quietRanges !== undefined) {
+      settings.quietRanges = dto.quietRanges;
     }
 
     return settings;
@@ -33,8 +30,10 @@ export class NotificationDefaultSettingsDtoMapper {
       data: {
         ...{ ...settings, quietRanges: undefined },
         id: settings.id ? settings.id : '',
-        quietStart: DatetimeHelper.minutesToTime(settings.quietRanges.quietStart) || '00',
-        quietFinish: DatetimeHelper.minutesToTime(settings.quietRanges.quietFinish) || '00',
+        quietRanges: {
+          quietStart: DatetimeHelper.minutesToTime(settings.quietRanges.quietStart) || '00',
+          quietFinish: DatetimeHelper.minutesToTime(settings.quietRanges.quietFinish) || '00',
+        },
       },
     };
   }

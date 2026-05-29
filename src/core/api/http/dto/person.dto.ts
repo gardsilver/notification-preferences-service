@@ -1,15 +1,18 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsOptional, IsISO8601, Length, IsUUID, ValidateNested, IsArray } from 'class-validator';
+import { ApiProperty, IntersectionType, PartialType, OmitType } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, IsOptional, IsISO8601, ValidateNested, IsArray } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import {
   CreatePersonChannelRequestDto,
   PersonChannelResponseData,
   UpdatePersonChannelRequestData,
 } from './person-channel.dto';
+import { BaseIdRequestDto, BaseIdResponseDto, BaseRegionCodeRequestDto, BaseRegionCodeResponseDto } from './base.dto';
 
-// Create Request
+// ==========================================
+// Create RequestDto
+// ==========================================
 
-export class CreatePersonRequestDto {
+export class CreatePersonRequestDto extends BaseRegionCodeRequestDto {
   @ApiProperty({ type: String, description: 'Имя', example: 'Иван', default: 'Иван', required: true })
   @IsString()
   @IsNotEmpty()
@@ -22,7 +25,7 @@ export class CreatePersonRequestDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   lastName!: string;
 
-  @ApiProperty({ type: String, description: 'Отчество (при наличии)', example: 'Иванович' })
+  @ApiProperty({ type: String, description: 'Отчество (при наличии)', example: 'Иванович', required: false })
   @IsString()
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -39,19 +42,6 @@ export class CreatePersonRequestDto {
   @IsNotEmpty()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   birthday!: string;
-
-  @ApiProperty({
-    type: String,
-    description: 'Код региона (ISO 2)',
-    example: 'RU',
-    default: 'RU',
-    required: true,
-  })
-  @IsString()
-  @Length(2, 2)
-  @IsNotEmpty()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
-  regionCode!: string;
 
   @ApiProperty({
     type: String,
@@ -75,94 +65,31 @@ export class CreatePersonRequestDto {
   channels!: CreatePersonChannelRequestDto[];
 }
 
-// Update Request
+// ==========================================
+// Update RequestDto
+// ==========================================
 
-export class UpdatePersonRequestDto {
-  @ApiProperty({
-    type: String,
-    description: 'ID (UUID)',
-    example: '00000000-0000-0000-0000-000000000000',
-    required: true,
-  })
-  @IsString()
-  @IsNotEmpty()
-  @IsUUID()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  id!: string;
-
-  @ApiProperty({ type: String, description: 'Имя', example: 'Иван', default: 'Иван' })
-  @IsString()
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  firstName?: string;
-
-  @ApiProperty({ type: String, description: 'Фамилия', example: 'Иванов', default: 'Иванов' })
-  @IsString()
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  lastName?: string;
-
-  @ApiProperty({ type: String, description: 'Отчество (при наличии)', example: 'Иванович' })
-  @IsString()
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  middleName?: string;
-
-  @ApiProperty({
-    type: String,
-    description: 'Дата рождения (YYYY-MM-DD)',
-    example: '1990-01-15',
-    default: '1990-01-15',
-  })
-  @IsISO8601()
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  birthday?: string;
-
-  @ApiProperty({
-    type: String,
-    description: 'Код региона (ISO 2)',
-    example: 'RU',
-    default: 'RU',
-  })
-  @IsString()
-  @Length(2, 2)
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
-  regionCode?: string;
-
-  @ApiProperty({
-    type: String,
-    description: 'Временная зона пользователя',
-    example: 'Europe/Moscow',
-    default: 'Europe/Moscow',
-  })
-  @IsString()
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  timezone?: string;
-
+export class UpdatePersonRequestDto extends IntersectionType(
+  BaseIdRequestDto,
+  PartialType(OmitType(CreatePersonRequestDto, ['channels'] as const)),
+) {
   @ApiProperty({
     type: [UpdatePersonChannelRequestData],
     description: 'Список каналов оповещения пользователя',
+    required: false,
   })
   @IsOptional()
-  @IsArray()
+  @IsArray({ message: 'Поле channels должно быть массивом' })
   @ValidateNested({ each: true })
   @Type(() => UpdatePersonChannelRequestData)
   channels?: UpdatePersonChannelRequestData[];
 }
 
-// Response
+// ==========================================
+// ResponseData
+// ==========================================
 
-export class PersonResponseData {
-  @ApiProperty({
-    type: String,
-    description: 'ID (UUID)',
-    example: '00000000-0000-0000-0000-000000000000',
-  })
-  id?: string;
-
+export class PersonResponseData extends IntersectionType(BaseIdResponseDto, BaseRegionCodeResponseDto) {
   @ApiProperty({ type: String, description: 'Имя', example: 'Иван' })
   firstName!: string;
 
@@ -175,15 +102,14 @@ export class PersonResponseData {
   @ApiProperty({
     type: String,
     description: 'Дата рождения (YYYY-MM-DD)',
+    example: '1990-01-15',
   })
   birthday!: string;
-
-  @ApiProperty({ type: String, description: 'Код региона (ISO 2)', example: 'RU' })
-  regionCode!: string;
 
   @ApiProperty({
     type: String,
     description: 'Временная зона пользователя',
+    example: 'Europe/Moscow',
   })
   timezone!: string;
 

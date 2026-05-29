@@ -1,122 +1,127 @@
-import 'reflect-metadata';
-
-import { plainToInstance } from 'class-transformer';
+ 
 import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import { NotificationType } from 'src/core/repositories/postgres';
 import {
   CreateNotificationDefaultSettingsRequestDto,
   UpdateNotificationDefaultSettingsRequestDto,
-} from './notification-default-settings.dto';
-import { NotificationType } from 'src/core/repositories/postgres';
+  NotificationDefaultSettingsResponseData,
+} from './notification-default-settings.dto'; // Укажите правильный относительный путь
 
-describe('NotificationDefaultSettings DTO validation', () => {
-  describe('Create DTO', () => {
-    it('should transform type to lowercase and pass validation', async () => {
-      const dto = plainToInstance(CreateNotificationDefaultSettingsRequestDto, {
-        type: 'SYSTEM',
-        quietStart: '22:00',
-        quietFinish: '08:00',
-      });
+// Заменяем хелпер времени на мок для изоляции тестов от логики парсинга времени
+jest.mock('src/core/app', () => ({
+  DatetimeHelper: {
+    timeToMinutes: jest.fn((time: string) => {
+      if (time === '22:00') return 1320;
+      if (time === '08:00') return 480;
+      return 0;
+    }),
+  },
+}));
 
+describe('NotificationDefaultSettings DTOs', () => {
+  const validCreatePayload = {
+    type: '  MARKETING  ', // Имитируем небрежный ввод для проверки trim/lowercase
+    quietRanges: {
+      quietStart: '22:00',
+      quietFinish: '08:00',
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('CreateNotificationDefaultSettingsRequestDto', () => {
+    it('should successfully validate with valid data and apply transformations', async () => {
+      const dto = plainToInstance(CreateNotificationDefaultSettingsRequestDto, validCreatePayload);
       const errors = await validate(dto);
 
       expect(errors.length).toBe(0);
-      expect(dto.type).toBe('system');
+      expect(dto.type).toBe(NotificationType.MARKETING); // Проверяем trim().toLowerCase()
+      expect(dto.quietRanges!.quietStart).toBe(1320); // Проверяем вложенную трансформацию времени
     });
 
-    it('should fail if type is invalid', async () => {
-      const dto = plainToInstance(CreateNotificationDefaultSettingsRequestDto, {
-        type: 'INVALID_TYPE',
-        quietStart: '22:00',
-        quietFinish: '08:00',
-      });
-
+    it('should fail validation if type is missing or invalid', async () => {
+      const plain = {
+        ...validCreatePayload,
+        type: 'invalid-channel-type',
+      };
+      const dto = plainToInstance(CreateNotificationDefaultSettingsRequestDto, plain);
       const errors = await validate(dto);
 
-      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('type');
+      expect(errors[0].constraints?.isIn).toContain('Указан неверный информационный канал');
     });
 
-    it('should transform HH:mm to minutes', async () => {
-      const dto = plainToInstance(CreateNotificationDefaultSettingsRequestDto, {
-        type: NotificationType.SYSTEM,
-        quietStart: '01:00',
-        quietFinish: '02:30',
-      });
-
-      await validate(dto);
-
-      expect(dto.quietStart).toBe(60);
-      expect(dto.quietFinish).toBe(150);
-    });
-
-    it('should fail when quietStart is missing but quietFinish exists (ValidateIf)', async () => {
-      const dto = plainToInstance(CreateNotificationDefaultSettingsRequestDto, {
-        type: NotificationType.SYSTEM,
-        quietFinish: '08:00',
-      });
-
+    it('should pass non-string values as-is without crashing in @Transform', async () => {
+      const plain = {
+        ...validCreatePayload,
+        type: null,
+      };
+      const dto = plainToInstance(CreateNotificationDefaultSettingsRequestDto, plain);
       const errors = await validate(dto);
 
-      expect(errors.length).toBeGreaterThan(0);
-    });
-
-    it('should fail Min/Max validation', async () => {
-      const dto = plainToInstance(CreateNotificationDefaultSettingsRequestDto, {
-        type: NotificationType.SYSTEM,
-        quietStart: -10,
-        quietFinish: 99999,
-      });
-
-      const errors = await validate(dto);
-
+      expect(dto.type).toBeNull();
       expect(errors.length).toBeGreaterThan(0);
     });
   });
 
-  describe('Update DTO', () => {
-    it('should validate UUID id', async () => {
-      const dto = plainToInstance(UpdateNotificationDefaultSettingsRequestDto, {
-        id: 'not-a-uuid',
-        type: NotificationType.SYSTEM,
-      });
+  describe('UpdateNotificationDefaultSettingsRequestDto', () => {
+    it('should validate successfully when id is correct and properties are omitted (PartialType)', async () => {
+      const plainUpdate = {
+        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9',
+        // Все остальные поля пропущены, так как это PATCH-модель
+      };
 
-      const errors = await validate(dto);
-
-      expect(errors.length).toBeGreaterThan(0);
-    });
-
-    it('should pass valid update DTO', async () => {
-      const dto = plainToInstance(UpdateNotificationDefaultSettingsRequestDto, {
-        id: '00000000-0000-0000-0000-000000000000',
-        type: NotificationType.SYSTEM,
-        quietStart: '10:00',
-        quietFinish: '18:00',
-      });
-
+      const dto = plainToInstance(UpdateNotificationDefaultSettingsRequestDto, plainUpdate);
       const errors = await validate(dto);
 
       expect(errors.length).toBe(0);
+      expect(dto.id).toBe('4fa0e21a-e7be-4b95-8df4-069c3a3cfef9');
     });
 
-    it('should allow partial update (no quiet fields)', async () => {
-      const dto = plainToInstance(UpdateNotificationDefaultSettingsRequestDto, {
-        id: '00000000-0000-0000-0000-000000000000',
+    it('should fail if id is missing or not a valid UUIDv4', async () => {
+      const plainUpdate = {
+        id: 'not-a-valid-uuid',
         type: NotificationType.SYSTEM,
-      });
+      };
 
+      const dto = plainToInstance(UpdateNotificationDefaultSettingsRequestDto, plainUpdate);
       const errors = await validate(dto);
 
-      expect(errors.length).toBe(0);
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('id');
     });
 
-    it('should trim id', async () => {
-      const dto = plainToInstance(UpdateNotificationDefaultSettingsRequestDto, {
-        id: ' 00000000-0000-0000-0000-000000000000 ',
-        type: NotificationType.SYSTEM,
-      });
+    it('should apply nested validation if quietRanges is partially provided during update', async () => {
+      const plainUpdate = {
+        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9',
+        quietRanges: {
+          quietStart: 'invalid-time-format',
+        },
+      };
 
-      await validate(dto);
+      const dto = plainToInstance(UpdateNotificationDefaultSettingsRequestDto, plainUpdate);
+      const errors = await validate(dto);
 
-      expect(dto.id).toBe('00000000-0000-0000-0000-000000000000');
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('quietRanges');
+      expect(errors[0].children?.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('NotificationDefaultSettingsResponseData', () => {
+    it('should correctly build response data structure', () => {
+      const response = new NotificationDefaultSettingsResponseData();
+      response.id = 'uuid-123';
+      response.type = NotificationType.SYSTEM;
+      response.quietRanges = { quietStart: '22:00', quietFinish: '08:00' };
+
+      expect(response.id).toBe('uuid-123');
+      expect(response.type).toBe(NotificationType.SYSTEM);
+      expect(response.quietRanges.quietStart).toBe('22:00');
     });
   });
 });

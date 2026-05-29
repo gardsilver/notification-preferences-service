@@ -19,10 +19,11 @@ export class PersonDtoMapper {
       status: ResponseStatus.SUCCESS,
       data: {
         ...personData,
-        id: personData.id !== null ? personData.id : undefined,
+        id: personData.id as unknown as string,
         middleName: personData.middleName !== null ? personData.middleName : undefined,
         channels: personData.channels?.map((channel) => ({
           ...channel,
+          id: channel.id as unknown as string,
           label: channel.label !== null ? channel.label : undefined,
           settings:
             channel.settings?.map((opt) => ({
@@ -58,10 +59,12 @@ export class PersonDtoMapper {
       const settings = channel.settings?.length ? channel.settings : [];
       return {
         ...channel,
-        settings: settings.map((opt) => ({
-          ...opt,
-          quietRanges: (opt.quietRanges as IQuietRanges) || { quietStart: 0, quietFinish: 0 },
-        })),
+        settings: settings.map((opt) => {
+          return {
+            ...opt,
+            quietRanges: opt.quietRanges ? (opt.quietRanges as IQuietRanges) : undefined,
+          };
+        }),
       };
     });
   }

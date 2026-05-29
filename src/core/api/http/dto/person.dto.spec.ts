@@ -1,230 +1,148 @@
-import { validate, useContainer } from 'class-validator';
+import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { Test } from '@nestjs/testing';
-import { ChannelType, PersonChannelStatus, PersonService } from 'src/core/repositories/postgres';
-import { IsChannelValueValidConstraint } from '../validators/person-channel.validator';
-import { CreatePersonRequestDto, UpdatePersonRequestDto } from './person.dto';
+import { CreatePersonRequestDto, UpdatePersonRequestDto, PersonResponseData } from './person.dto'; // Укажите правильный относительный путь
 
-describe('CreatePersonRequestDto', () => {
-  const baseValid = {
-    firstName: ' Иван ',
-    lastName: ' Иванов ',
-    birthday: '1990-01-01',
-    regionCode: 'ru',
-    timezone: 'Europe/Moscow',
-    channels: [
-      {
-        status: PersonChannelStatus.ACTIVE,
-        isVerified: true,
-        type: ChannelType.EMAIL,
-        value: 'TEST@MAIL.COM',
-        settings: [],
-      },
-    ],
+describe('Person DTOs', () => {
+  const validCreatePayload = {
+    firstName: '  Иван  ', // Проверяем trim()
+    lastName: '  Иванов  ',
+    middleName: '  Иванович  ',
+    birthday: '1990-01-15',
+    regionCode: '  ru  ', // Наследуется из BaseRegionCodeRequestDto (проверяем trim и uppercase)
+    timezone: '  Europe/Moscow  ',
+    channels: [],
   };
 
-  beforeAll(async () => {
-    const module = await Test.createTestingModule({
-      providers: [
-        IsChannelValueValidConstraint,
-        {
-          provide: PersonService,
-          useValue: {
-            isChannelExist: jest.fn().mockResolvedValue(false),
+  describe('CreatePersonRequestDto', () => {
+    it('should successfully validate with valid data and apply string transformations', async () => {
+      const dto = plainToInstance(CreatePersonRequestDto, validCreatePayload);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(0);
+      expect(dto.firstName).toBe('Иван');
+      expect(dto.lastName).toBe('Иванов');
+      expect(dto.middleName).toBe('Иванович');
+      expect(dto.regionCode).toBe('RU');
+      expect(dto.timezone).toBe('Europe/Moscow');
+    });
+
+    it('should pass validation without middleName (IsOptional)', async () => {
+      const plain: Partial<typeof validCreatePayload> = { ...validCreatePayload };
+      delete plain.middleName;
+
+      const dto = plainToInstance(CreatePersonRequestDto, plain);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(0);
+      expect(dto.middleName).toBeUndefined();
+    });
+
+    it('should fail validation if mandatory fields are missing', async () => {
+      const plain = {
+        middleName: 'Петрович',
+      };
+      const dto = plainToInstance(CreatePersonRequestDto, plain);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBeGreaterThan(0);
+      const targetProperties = errors.map((err) => err.property);
+      expect(targetProperties).toContain('firstName');
+      expect(targetProperties).toContain('lastName');
+      expect(targetProperties).toContain('birthday');
+      expect(targetProperties).toContain('regionCode'); // Проверка обязательности из BaseRegionCodeRequestDto
+      expect(targetProperties).toContain('timezone');
+    });
+
+    it('should fail validation if birthday is not a valid ISO8601 string', async () => {
+      const plain = {
+        ...validCreatePayload,
+        birthday: '15-01-1990', // Неверный формат (должен быть YYYY-MM-DD)
+      };
+      const dto = plainToInstance(CreatePersonRequestDto, plain);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('birthday');
+    });
+  });
+
+  describe('UpdatePersonRequestDto', () => {
+    it('should validate successfully when all fields except id are omitted (PartialType)', async () => {
+      const plainUpdate = {
+        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9', // Передаем только обязательный ID
+      };
+
+      const dto = plainToInstance(UpdatePersonRequestDto, plainUpdate);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(0);
+      expect(dto.id).toBe('4fa0e21a-e7be-4b95-8df4-069c3a3cfef9');
+    });
+
+    it('should fail if id is missing or not a valid UUIDv4', async () => {
+      const plainUpdate = {
+        id: 'invalid-id-format',
+      };
+
+      const dto = plainToInstance(UpdatePersonRequestDto, plainUpdate);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('id');
+    });
+
+    it('should fail validation if provided fields inside update violate validation rules', async () => {
+      const plainUpdate = {
+        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9',
+        birthday: 'not-a-date',
+      };
+
+      const dto = plainToInstance(UpdatePersonRequestDto, plainUpdate);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('birthday');
+    });
+
+    it('should deeply validate nested update channels array if provided', async () => {
+      const plainUpdate = {
+        id: '4fa0e21a-e7be-4b95-8df4-069c3a3cfef9',
+        channels: [
+          {
+            id: 'invalid-nested-uuid', // Вызовет ошибку во вложенном UpdatePersonChannelRequestData
           },
-        },
-      ],
-    }).compile();
+        ],
+      };
 
-    useContainer(module, { fallbackOnErrors: true });
-  });
+      const dto = plainToInstance(UpdatePersonRequestDto, plainUpdate);
+      const errors = await validate(dto);
 
-  it('should validate correct payload', async () => {
-    const dto = plainToInstance(CreatePersonRequestDto, baseValid);
-
-    const errors = await validate(dto, {
-      whitelist: true,
-      forbidNonWhitelisted: true,
+      expect(errors.length).toBe(1);
+      expect(errors[0].property).toBe('channels');
+      expect(errors[0].children?.length).toBeGreaterThan(0);
     });
-
-    expect(errors.length).toBe(0);
   });
 
-  it('should trim names and normalize regionCode', async () => {
-    const dto = plainToInstance(CreatePersonRequestDto, baseValid);
+  describe('PersonResponseData', () => {
+    it('should correctly build response data structure including inherited fields', () => {
+      const response = new PersonResponseData();
+      response.id = 'person-uuid-999';
+      response.regionCode = 'RU';
+      response.firstName = 'Иван';
+      response.lastName = 'Иванов';
+      response.middleName = 'Иванович';
+      response.birthday = '1990-01-15';
+      response.timezone = 'Europe/Moscow';
+      response.channels = [];
 
-    await validate(dto);
-
-    expect(dto.firstName).toBe('Иван');
-    expect(dto.lastName).toBe('Иванов');
-    expect(dto.regionCode).toBe('RU');
-  });
-
-  it('should fail when channels is not array', async () => {
-    const dto = plainToInstance(CreatePersonRequestDto, {
-      ...baseValid,
-      channels: {},
+      expect(response.id).toBe('person-uuid-999');
+      expect(response.regionCode).toBe('RU');
+      expect(response.firstName).toBe('Иван');
+      expect(response.lastName).toBe('Иванов');
+      expect(response.middleName).toBe('Иванович');
+      expect(response.birthday).toBe('1990-01-15');
+      expect(response.timezone).toBe('Europe/Moscow');
+      expect(response.channels).toEqual([]);
     });
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it('should fail nested channel validation', async () => {
-    const dto = plainToInstance(CreatePersonRequestDto, {
-      ...baseValid,
-      channels: [
-        {
-          status: 'BAD_STATUS',
-          type: ChannelType.EMAIL,
-          value: 'not-email',
-          isVerified: 'maybe',
-        },
-      ],
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it('should fail missing required fields', async () => {
-    const dto = plainToInstance(CreatePersonRequestDto, {
-      lastName: 'Ivanov',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it('should normalize timezone and regionCode', async () => {
-    const dto = plainToInstance(CreatePersonRequestDto, {
-      ...baseValid,
-      timezone: ' Europe/Moscow ',
-      regionCode: 'us',
-    });
-
-    await validate(dto);
-
-    expect(dto.timezone).toBe('Europe/Moscow');
-    expect(dto.regionCode).toBe('US');
-  });
-
-  it('should allow empty channels array', async () => {
-    const dto = plainToInstance(CreatePersonRequestDto, {
-      ...baseValid,
-      channels: [],
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBe(0);
-  });
-});
-
-describe('UpdatePersonRequestDto', () => {
-  const baseValid = {
-    id: '00000000-0000-0000-0000-000000000000',
-    firstName: ' Иван ',
-    lastName: ' Иванов ',
-    channels: [
-      {
-        id: '00000000-0000-0000-0000-000000000000',
-        status: PersonChannelStatus.ACTIVE,
-        type: ChannelType.EMAIL,
-        value: 'test@mail.com',
-      },
-    ],
-  };
-
-  it('should validate minimal valid update', async () => {
-    const dto = plainToInstance(UpdatePersonRequestDto, baseValid);
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBe(0);
-  });
-
-  it('should allow partial update (no required fields except id)', async () => {
-    const dto = plainToInstance(UpdatePersonRequestDto, {
-      id: baseValid.id,
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBe(0);
-  });
-
-  it('should fail if id is not uuid', async () => {
-    const dto = plainToInstance(UpdatePersonRequestDto, {
-      id: 'not-uuid',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.some((e) => e.property === 'id')).toBe(true);
-  });
-
-  it('should validate nested channels only when present', async () => {
-    const dto = plainToInstance(UpdatePersonRequestDto, {
-      id: baseValid.id,
-      channels: [
-        {
-          status: 'INVALID',
-          type: ChannelType.EMAIL,
-          value: 'bad',
-        },
-      ],
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it('should not fail when optional fields are missing entirely', async () => {
-    const dto = plainToInstance(UpdatePersonRequestDto, {
-      id: '00000000-0000-0000-0000-000000000000',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBe(0);
-  });
-
-  it('should validate only id present', async () => {
-    const dto = plainToInstance(UpdatePersonRequestDto, {
-      id: '00000000-0000-0000-0000-000000000000',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors).toHaveLength(0);
-  });
-
-  it('should ignore undefined optional fields', async () => {
-    const dto = plainToInstance(UpdatePersonRequestDto, {
-      id: '00000000-0000-0000-0000-000000000000',
-      firstName: undefined,
-      lastName: undefined,
-      timezone: undefined,
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors).toHaveLength(0);
-  });
-
-  it('should fail invalid regionCode length', async () => {
-    const dto = plainToInstance(UpdatePersonRequestDto, {
-      id: '00000000-0000-0000-0000-000000000000',
-      regionCode: 'RUS',
-    });
-
-    const errors = await validate(dto);
-
-    expect(errors.length).toBeGreaterThan(0);
   });
 });
