@@ -4,7 +4,6 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
-  IsNotEmptyObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -160,12 +159,13 @@ export class QuietRangesRequestDto {
   @ApiProperty({
     description: 'Период тишины по умолчанию',
     type: QuietRangesRequestData,
-    required: true,
+    required: false,
   })
-  @IsNotEmptyObject({}, { message: 'Период тишины (quietRanges) является обязательным объектом' })
+  @IsOptional()
+  @ValidateIf((o) => o.quietRanges !== undefined && o.quietRanges !== null)
   @ValidateNested()
   @Type(() => QuietRangesRequestData)
-  quietRanges!: QuietRangesRequestData;
+  quietRanges?: QuietRangesRequestData;
 }
 
 // ==========================================

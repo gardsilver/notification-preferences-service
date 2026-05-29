@@ -41,21 +41,22 @@ describe('ChannelSettings DTOs', () => {
       expect(errors.length).toBe(0);
       expect(dto.type).toBe(NotificationType.MARKETING);
       expect(dto.status).toBe(NotificationStatus.ACTIVE); // Строка '  1  ' превратилась в число 1
-      expect(dto.quietRanges.quietStart).toBe(1320);
+      expect(dto.quietRanges!.quietStart).toBe(1320);
     });
 
     it('should fail validation if inherited required fields are missing', async () => {
       const plain = {
         status: NotificationStatus.ACTIVE,
-        // type и quietRanges отсутствуют
+        // type отсутствует, а quietRanges опущен легитимно, так как он теперь опционален
       };
       const dto = plainToInstance(ChannelSettingsRequestData, plain);
       const errors = await validate(dto);
 
       expect(errors.length).toBeGreaterThan(0);
       const targetProperties = errors.map((err) => err.property);
+
       expect(targetProperties).toContain('type');
-      expect(targetProperties).toContain('quietRanges');
+      expect(targetProperties).not.toContain('quietRanges');
     });
 
     it('should fail validation with invalid status value', async () => {

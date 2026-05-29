@@ -178,7 +178,7 @@ describe('PersonDtoMapper', () => {
       ]);
     });
 
-    it('should set default quietRanges if they are not provided in settings', () => {
+    it('should return undefined for quietRanges if they are not provided in settings to allow database defaults', () => {
       const mockDto: CreatePersonRequestDto = {
         channels: [
           {
@@ -194,10 +194,7 @@ describe('PersonDtoMapper', () => {
 
       const result = mapper.toChannels(mockDto);
 
-      expect(result[0].settings[0].quietRanges).toEqual({
-        quietStart: 0,
-        quietFinish: 0,
-      });
+      expect(result[0].settings[0].quietRanges).toBeUndefined();
     });
   });
 });

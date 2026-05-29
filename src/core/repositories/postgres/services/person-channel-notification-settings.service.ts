@@ -6,6 +6,7 @@ import {
   IChannelSettings,
   INotificationDefaultSettings,
   IPersonChannelNotificationSettings,
+  IQuietRanges,
   NotificationType,
 } from '../types/types';
 import { PersonChannelNotificationSettingsModel } from '../entities/person-channel-notification-settings.model';
@@ -82,15 +83,33 @@ export class PersonChannelNotificationSettingsService {
 
       const matchedDefaultOption = defaultOptions.find((defaultOption) => defaultOption.type === notificationType);
 
+      const hasCustomQuietRanges = use.quietRanges && use.quietRanges.quietStart !== undefined;
+
+      let finalQuietRanges: unknown;
+
+      if (hasCustomQuietRanges) {
+        finalQuietRanges = QuietRangesHelper.convertMinutesToQuietRanges(
+          use.quietRanges!.quietStart,
+          use.quietRanges!.quietFinish,
+        );
+      } else if (matchedDefaultOption) {
+        const defaultQuietRanges = matchedDefaultOption.quietRanges;
+
+        if (defaultQuietRanges && typeof defaultQuietRanges === 'object') {
+          finalQuietRanges = QuietRangesHelper.convertMinutesToQuietRanges(
+            (defaultQuietRanges as IQuietRanges).quietStart,
+            (defaultQuietRanges as IQuietRanges).quietFinish,
+          );
+        } else if (typeof defaultQuietRanges === 'string') {
+          finalQuietRanges = defaultQuietRanges;
+        }
+      }
+
       const settingsDataForCreate: Partial<IPersonChannelNotificationSettings> = {
         status: use.status,
         type: use.type,
         personChannelId: channel.id,
-        quietRanges: use.quietRanges
-          ? QuietRangesHelper.convertMinutesToQuietRanges(use.quietRanges.quietStart, use.quietRanges.quietFinish)
-          : matchedDefaultOption
-            ? matchedDefaultOption.quietRanges
-            : '{}',
+        quietRanges: finalQuietRanges, // Передаем корректно сформированную строку
       };
 
       const savedSettings = await this.repository.create(

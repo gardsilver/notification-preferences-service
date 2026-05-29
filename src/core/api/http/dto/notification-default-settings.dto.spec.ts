@@ -1,3 +1,4 @@
+ 
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { NotificationType } from 'src/core/repositories/postgres';
@@ -38,7 +39,7 @@ describe('NotificationDefaultSettings DTOs', () => {
 
       expect(errors.length).toBe(0);
       expect(dto.type).toBe(NotificationType.MARKETING); // Проверяем trim().toLowerCase()
-      expect(dto.quietRanges.quietStart).toBe(1320); // Проверяем вложенную трансформацию времени
+      expect(dto.quietRanges!.quietStart).toBe(1320); // Проверяем вложенную трансформацию времени
     });
 
     it('should fail validation if type is missing or invalid', async () => {
